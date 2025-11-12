@@ -68,6 +68,7 @@ discord-music-bot/
 - ✅ Spotify tracks
 - ✅ Spotify playlists (up to 50 songs)
 - ✅ Spotify albums
+- ✅ Fast loading (instant playback, background loading)
 - ✅ Automatic queue progression
 - ✅ High-quality audio streaming
 

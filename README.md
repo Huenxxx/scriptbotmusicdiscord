@@ -10,6 +10,7 @@ A feature-rich Discord music bot with support for YouTube, Spotify, and playlist
 
 - 🎵 **YouTube Support** - Play music from YouTube (URLs and search)
 - 🎧 **Spotify Integration** - Play tracks, playlists, and albums from Spotify
+- ⚡ **Instant Playback** - Albums/playlists start playing immediately
 - 💾 **Playlist Management** - Save and load custom playlists
 - 🔀 **Advanced Queue** - Shuffle, remove songs, and loop modes
 - 🎮 **Easy Controls** - Intuitive commands for playback control

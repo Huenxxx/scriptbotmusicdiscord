@@ -45,7 +45,7 @@ Python 3.8 or higher.
 Join a voice channel and type `!play song name` or `!play youtube_url`
 
 ### Can I play Spotify playlists?
-Yes! Use `!play spotify_playlist_url` (requires Spotify configuration)
+Yes! Use `!play spotify_playlist_url` (requires Spotify configuration). The first song starts playing immediately while the rest load in the background.
 
 ### How do I save playlists?
 Use `!playlist_save name` to save the current queue.

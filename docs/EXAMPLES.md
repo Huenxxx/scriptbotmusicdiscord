@@ -183,10 +183,13 @@ Next songs:
 
 **Bot Response:**
 ```
-📋 Adding 50 songs from Spotify...
-✅ Added 50 songs to queue
+📋 Loading 50 songs from Spotify playlist...
+🎵 Playing first song, loading 49 more in background...
 🎵 Now Playing: [First Song]
+✅ Finished loading playlist: 50 songs added
 ```
+
+**Note:** The first song starts playing immediately while the rest load in the background!
 
 ### Loading a Spotify Album
 
@@ -196,10 +199,13 @@ Next songs:
 
 **Bot Response:**
 ```
-💿 Adding 12 songs from album...
-✅ Added 12 songs to queue
+💿 Loading 12 songs from album...
+🎵 Playing first song, loading 11 more in background...
 🎵 Now Playing: [First Track]
+✅ Finished loading album: 12 songs added
 ```
+
+**Note:** Instant playback! No waiting for the entire album to load.
 
 ---
 

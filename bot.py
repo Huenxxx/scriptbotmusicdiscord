@@ -69,35 +69,71 @@ async def play(ctx, *, query):
             if tipo == 'playlist':
                 tracks = await loop.run_in_executor(None, lambda: get_spotify_playlist(spotify_id))
                 if tracks:
-                    await ctx.send(f'📋 Añadiendo {len(tracks)} canciones de Spotify...')
-                    added = 0
-                    for track in tracks[:50]:  # Límite de 50 canciones
-                        data = await loop.run_in_executor(None, lambda t=track: ytdl_search(t['search_query']))
-                        if data:
-                            player.queue.append(data)
-                            added += 1
+                    await ctx.send(f'📋 Loading {len(tracks)} songs from Spotify playlist...')
                     
-                    await ctx.send(f'✅ Añadidas {added} canciones a la cola')
+                    # Load first song immediately
+                    if tracks:
+                        first_track = tracks[0]
+                        first_data = await loop.run_in_executor(None, lambda: ytdl_search(first_track['search_query']))
+                        if first_data:
+                            player.queue.append(first_data)
+                            
+                            # Start playing immediately
+                            if not voice_client.is_playing() and not voice_client.is_paused():
+                                await player.play_next()
+                            
+                            await ctx.send(f'🎵 Playing first song, loading {len(tracks)-1} more in background...')
                     
-                    if not voice_client.is_playing() and not voice_client.is_paused():
-                        await player.play_next()
+                    # Load rest in background
+                    async def load_remaining():
+                        added = 1  # Already added first song
+                        for track in tracks[1:50]:  # Skip first, limit to 50 total
+                            try:
+                                data = await loop.run_in_executor(None, lambda t=track: ytdl_search(t['search_query']))
+                                if data:
+                                    player.queue.append(data)
+                                    added += 1
+                            except:
+                                continue
+                        await ctx.send(f'✅ Finished loading playlist: {added} songs added')
+                    
+                    # Run in background
+                    asyncio.create_task(load_remaining())
                     return
             
             elif tipo == 'album':
                 tracks = await loop.run_in_executor(None, lambda: get_spotify_album(spotify_id))
                 if tracks:
-                    await ctx.send(f'💿 Añadiendo {len(tracks)} canciones del álbum...')
-                    added = 0
-                    for track in tracks:
-                        data = await loop.run_in_executor(None, lambda t=track: ytdl_search(t['search_query']))
-                        if data:
-                            player.queue.append(data)
-                            added += 1
+                    await ctx.send(f'💿 Loading {len(tracks)} songs from album...')
                     
-                    await ctx.send(f'✅ Añadidas {added} canciones a la cola')
+                    # Load first song immediately
+                    if tracks:
+                        first_track = tracks[0]
+                        first_data = await loop.run_in_executor(None, lambda: ytdl_search(first_track['search_query']))
+                        if first_data:
+                            player.queue.append(first_data)
+                            
+                            # Start playing immediately
+                            if not voice_client.is_playing() and not voice_client.is_paused():
+                                await player.play_next()
+                            
+                            await ctx.send(f'🎵 Playing first song, loading {len(tracks)-1} more in background...')
                     
-                    if not voice_client.is_playing() and not voice_client.is_paused():
-                        await player.play_next()
+                    # Load rest in background
+                    async def load_remaining():
+                        added = 1  # Already added first song
+                        for track in tracks[1:]:  # Skip first song
+                            try:
+                                data = await loop.run_in_executor(None, lambda t=track: ytdl_search(t['search_query']))
+                                if data:
+                                    player.queue.append(data)
+                                    added += 1
+                            except:
+                                continue
+                        await ctx.send(f'✅ Finished loading album: {added} songs added')
+                    
+                    # Run in background
+                    asyncio.create_task(load_remaining())
                     return
         
         # Buscar canción individual

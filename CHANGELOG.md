@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2024-11-11
+
+### Improved
+- **Fast Spotify Loading:** Albums and playlists now start playing immediately
+  - First song loads and plays right away
+  - Remaining songs load in background
+  - No more waiting for entire album/playlist to load
+
+### Fixed
+- Reduced loading time for Spotify albums from ~1 minute to instant playback
+
+---
+
 ## [2.0.0] - 2024-11-11
 
 ### Added
