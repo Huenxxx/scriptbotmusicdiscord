@@ -20,26 +20,112 @@ except ImportError:
     SPOTIFY_AVAILABLE = False
     print('⚠️ Spotipy no instalado. Instala con: pip install spotipy')
 
-def ytdl_search(query):
-    """Busca y extrae información de YouTube"""
+def ytdl_search(query, max_results=1):
+    """Search and extract information from YouTube"""
     with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
         try:
             if 'youtube.com' in query or 'youtu.be' in query:
                 info = ydl.extract_info(query, download=False)
+                return {
+                    'url': info['url'],
+                    'title': info['title'],
+                    'duration': info.get('duration', 0),
+                    'thumbnail': info.get('thumbnail', ''),
+                    'view_count': info.get('view_count', 0),
+                    'channel': info.get('channel', ''),
+                }
             else:
-                info = ydl.extract_info(f"ytsearch:{query}", download=False)
-                if 'entries' in info:
-                    info = info['entries'][0]
+                # Search with multiple results
+                search_query = f"ytsearch{max_results}:{query}"
+                info = ydl.extract_info(search_query, download=False)
+                
+                if max_results == 1:
+                    # Return single result
+                    if 'entries' in info and info['entries']:
+                        entry = info['entries'][0]
+                        return {
+                            'url': entry['url'],
+                            'title': entry['title'],
+                            'duration': entry.get('duration', 0),
+                            'thumbnail': entry.get('thumbnail', ''),
+                            'view_count': entry.get('view_count', 0),
+                            'channel': entry.get('channel', ''),
+                        }
+                else:
+                    # Return multiple results
+                    results = []
+                    if 'entries' in info:
+                        for entry in info['entries'][:max_results]:
+                            if entry:
+                                results.append({
+                                    'url': entry['url'],
+                                    'title': entry['title'],
+                                    'duration': entry.get('duration', 0),
+                                    'thumbnail': entry.get('thumbnail', ''),
+                                    'webpage_url': entry.get('webpage_url', ''),
+                                    'view_count': entry.get('view_count', 0),
+                                    'channel': entry.get('channel', ''),
+                                })
+                    return results
             
-            return {
-                'url': info['url'],
-                'title': info['title'],
-                'duration': info.get('duration', 0),
-                'thumbnail': info.get('thumbnail', ''),
-            }
-        except Exception as e:
-            print(f'Error en ytdl_search: {e}')
             return None
+        except Exception as e:
+            print(f'Error in ytdl_search: {e}')
+            return None
+
+def is_confident_result(result, query):
+    """
+    Determine if we're confident this is the right song.
+    Returns True if:
+    - Very high view count (>10M views)
+    - Official artist channel (contains 'VEVO', 'Official', or artist name)
+    - Very popular (>50M views)
+    - NOT a full album, lyrics video, or playlist
+    """
+    if not result:
+        return False
+    
+    view_count = result.get('view_count', 0)
+    channel = result.get('channel', '').lower()
+    title = result.get('title', '').lower()
+    duration = result.get('duration', 0)
+    query_lower = query.lower()
+    
+    # Filter out unwanted content
+    unwanted_keywords = [
+        'full album', 'álbum completo', 'album completo',
+        'letra', 'lyrics', 'lyric video',
+        'playlist', 'compilation', 'mix',
+        'hours', 'horas', 'hour'
+    ]
+    
+    # Check if it's likely a full album or compilation (too long)
+    if duration > 600:  # More than 10 minutes is suspicious for a single song
+        return False
+    
+    # Check for unwanted keywords in title
+    if any(keyword in title for keyword in unwanted_keywords):
+        return False
+    
+    # Very popular videos (50M+ views) are usually the right one
+    if view_count > 50_000_000 and duration < 600:
+        return True
+    
+    # Official channels
+    official_indicators = ['vevo', 'official', 'topic']
+    if any(indicator in channel for indicator in official_indicators):
+        if view_count > 10_000_000 and duration < 600:  # Official + popular = confident
+            return True
+    
+    # Check if artist name is in channel name
+    # Extract potential artist name from query (first word or two)
+    query_words = query_lower.split()
+    if len(query_words) >= 2:
+        potential_artist = ' '.join(query_words[:2])
+        if potential_artist in channel and view_count > 5_000_000 and duration < 600:
+            return True
+    
+    return False
 
 def is_spotify_url(url):
     """Verifica si es una URL de Spotify"""
@@ -103,7 +189,7 @@ def get_spotify_playlist(playlist_id):
         return []
 
 def get_spotify_album(album_id):
-    """Obtiene todas las canciones de un álbum de Spotify"""
+    """Get all songs from a Spotify album"""
     if not SPOTIFY_AVAILABLE:
         return []
     
@@ -123,8 +209,26 @@ def get_spotify_album(album_id):
         
         return tracks
     except Exception as e:
-        print(f'Error al obtener álbum de Spotify: {e}')
+        print(f'Error getting Spotify album: {e}')
         return []
+
+def search_spotify_track(query):
+    """Search for a track on Spotify and return formatted search query"""
+    if not SPOTIFY_AVAILABLE:
+        return None
+    
+    try:
+        results = spotify.search(q=query, type='track', limit=1)
+        if results['tracks']['items']:
+            track = results['tracks']['items'][0]
+            artist = track['artists'][0]['name']
+            title = track['name']
+            # Return formatted query: "Artist - Title" for better YouTube search
+            return f"{artist} {title} official audio"
+        return None
+    except Exception as e:
+        print(f'Error searching Spotify: {e}')
+        return None
 
 async def search_song(query):
     """Busca una canción desde cualquier fuente"""

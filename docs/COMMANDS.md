@@ -23,17 +23,69 @@ Play music from YouTube or Spotify.
 **Examples:**
 ```
 !play never gonna give you up
+!play imagine dragons believer
 !play https://www.youtube.com/watch?v=dQw4w9WgXcQ
 !play https://open.spotify.com/track/3n3Ppam7vgaVa1iaRUc9Lp
 !play https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
 ```
 
+**Smart Search:**
+The bot intelligently decides whether to show options:
+
+**High Confidence (plays immediately):**
+- Official artist channels (VEVO, Official, Topic)
+- Very popular videos (50M+ views)
+- Clear matches (10M+ views on official channel)
+
+```
+!play despacito
+🔍 Searching: despacito
+➕ Added to queue: Luis Fonsi - Despacito (5,000,000,000 views)
+🎵 Now Playing: Luis Fonsi - Despacito
+```
+
+**Low Confidence (shows options):**
+- Ambiguous searches
+- Multiple popular versions
+- Less popular songs
+
+```
+🎵 Multiple results found - Use !select <number> to choose:
+
+1. Song Title [3:45] • 50M views • Artist Official
+2. Song Title (Live) [4:12] • 10M views • Artist VEVO
+3. Song Title (Remix) [3:20] • 5M views • DJ Channel
+...
+
+💡 Type !select <number> or wait 30 seconds to auto-select #1
+```
+
 **Supported:**
 - YouTube videos (direct URL)
-- YouTube search (by name)
+- YouTube search (by name) - shows multiple options
 - Spotify tracks
 - Spotify playlists (loads up to 50 songs)
 - Spotify albums
+
+---
+
+### !select (aliases: !choose, !pick)
+Select a song from search results.
+
+**Usage:**
+```
+!select <number>
+```
+
+**Example:**
+```
+!play despacito
+# Bot shows 5 results
+!select 2
+# Plays result #2
+```
+
+**Note:** Search results expire after 30 seconds.
 
 ---
 

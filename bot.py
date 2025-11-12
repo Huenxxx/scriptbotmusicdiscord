@@ -21,6 +21,9 @@ bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 # Diccionario de players por servidor
 queues = {}
 
+# Diccionario para almacenar búsquedas pendientes por usuario
+pending_searches = {}
+
 @bot.event
 async def on_ready():
     print('=' * 60)
@@ -38,9 +41,9 @@ async def on_ready():
 
 @bot.command(name='play', aliases=['p'])
 async def play(ctx, *, query):
-    """Reproduce música desde YouTube o Spotify"""
+    """Play music from YouTube or Spotify"""
     if not ctx.author.voice:
-        await ctx.send('❌ Debes estar en un canal de voz')
+        await ctx.send('❌ You must be in a voice channel')
         return
 
     channel = ctx.author.voice.channel
@@ -57,7 +60,7 @@ async def play(ctx, *, query):
     player = queues[ctx.guild.id]
     player.voice_client = voice_client
 
-    await ctx.send(f'🔍 Buscando: **{query}**')
+    await ctx.send(f'🔍 Searching: **{query}**')
 
     loop = asyncio.get_event_loop()
     
@@ -136,77 +139,169 @@ async def play(ctx, *, query):
                     asyncio.create_task(load_remaining())
                     return
         
-        # Buscar canción individual
-        data, error = await loop.run_in_executor(None, lambda: search_song(query))
-        
-        if error:
-            await ctx.send(f'❌ {error}')
+        # Search for individual song
+        # Check if it's a direct URL
+        if 'youtube.com' in query or 'youtu.be' in query:
+            data = await loop.run_in_executor(None, lambda: ytdl_search(query, max_results=1))
+            if data:
+                player.queue.append(data)
+                if not voice_client.is_playing() and not voice_client.is_paused():
+                    await player.play_next()
+                else:
+                    await ctx.send(f'➕ Added to queue: **{data["title"]}**')
+            else:
+                await ctx.send('❌ Song not found')
             return
         
-        if data is None:
-            await ctx.send('❌ No se encontró la canción')
+        # Try Spotify first if available
+        if SPOTIFY_AVAILABLE:
+            spotify_result = await loop.run_in_executor(None, lambda: search_spotify_track(query))
+            if spotify_result:
+                # Found on Spotify, search on YouTube with artist + title
+                data = await loop.run_in_executor(None, lambda: ytdl_search(spotify_result, max_results=1))
+                if data:
+                    player.queue.append(data)
+                    if not voice_client.is_playing() and not voice_client.is_paused():
+                        await player.play_next()
+                    else:
+                        await ctx.send(f'➕ Added to queue: **{data["title"]}** (via Spotify)')
+                    return
+        
+        # Search with multiple results on YouTube
+        results = await loop.run_in_executor(None, lambda: ytdl_search(query, max_results=5))
+        
+        if not results or len(results) == 0:
+            await ctx.send('❌ No songs found')
             return
         
-        player.queue.append(data)
+        # Check if we're confident about the first result
+        first_result = results[0]
+        from music_sources import is_confident_result
         
-        if not voice_client.is_playing() and not voice_client.is_paused():
-            await player.play_next()
-        else:
-            await ctx.send(f'➕ Añadido a la cola: **{data["title"]}**')
+        if is_confident_result(first_result, query):
+            # High confidence - play immediately
+            player.queue.append(first_result)
+            if not voice_client.is_playing() and not voice_client.is_paused():
+                await player.play_next()
+            else:
+                view_count = first_result.get('view_count', 0)
+                views_str = f" ({view_count:,} views)" if view_count > 0 else ""
+                await ctx.send(f'➕ Added to queue: **{first_result["title"]}**{views_str}')
+            return
+        
+        # Low confidence or ambiguous - show options
+        message = '🎵 **Multiple results found** - Use `!select <number>` to choose:\n\n'
+        for i, result in enumerate(results, 1):
+            duration = result.get('duration', 0)
+            duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "?"
+            
+            view_count = result.get('view_count', 0)
+            views_str = f" • {view_count // 1_000_000}M views" if view_count > 1_000_000 else ""
+            
+            channel = result.get('channel', '')
+            channel_str = f" • {channel}" if channel else ""
+            
+            message += f'**{i}.** {result["title"]} `[{duration_str}]`{views_str}{channel_str}\n'
+        
+        message += f'\n💡 Type `!select <number>` or wait 30 seconds to auto-select #1'
+        
+        # Store search results for this user
+        pending_searches[ctx.author.id] = {
+            'results': results,
+            'channel': ctx.channel,
+            'voice_client': voice_client,
+            'player': player,
+            'timestamp': asyncio.get_event_loop().time()
+        }
+        
+        await ctx.send(message)
     
     except Exception as e:
         await ctx.send(f'❌ Error: {str(e)}')
 
+@bot.command(name='select', aliases=['choose', 'pick'])
+async def select(ctx, number: int):
+    """Select a song from search results"""
+    user_id = ctx.author.id
+    
+    if user_id not in pending_searches:
+        await ctx.send('❌ No active search. Use `!play <song name>` first')
+        return
+    
+    search_data = pending_searches[user_id]
+    results = search_data['results']
+    
+    if number < 1 or number > len(results):
+        await ctx.send(f'❌ Invalid number. Choose between 1 and {len(results)}')
+        return
+    
+    # Get selected song
+    selected = results[number - 1]
+    player = search_data['player']
+    voice_client = search_data['voice_client']
+    
+    # Add to queue
+    player.queue.append(selected)
+    
+    # Clear pending search
+    del pending_searches[user_id]
+    
+    # Play if nothing is playing
+    if not voice_client.is_playing() and not voice_client.is_paused():
+        await player.play_next()
+    else:
+        await ctx.send(f'➕ Added to queue: **{selected["title"]}**')
+
 @bot.command(name='skip', aliases=['s'])
 async def skip(ctx):
-    """Salta la canción actual"""
+    """Skip current song"""
     if ctx.voice_client and ctx.voice_client.is_playing():
         ctx.voice_client.stop()
-        await ctx.send('⏭️ Canción saltada')
+        await ctx.send('⏭️ Song skipped')
     else:
-        await ctx.send('❌ No hay música reproduciéndose')
+        await ctx.send('❌ No music playing')
 
 @bot.command(name='pause')
 async def pause(ctx):
-    """Pausa la reproducción"""
+    """Pause playback"""
     if ctx.voice_client and ctx.voice_client.is_playing():
         ctx.voice_client.pause()
-        await ctx.send('⏸️ Música pausada')
+        await ctx.send('⏸️ Paused')
     else:
-        await ctx.send('❌ No hay música reproduciéndose')
+        await ctx.send('❌ No music playing')
 
 @bot.command(name='resume', aliases=['r'])
 async def resume(ctx):
-    """Reanuda la reproducción"""
+    """Resume playback"""
     if ctx.voice_client and ctx.voice_client.is_paused():
         ctx.voice_client.resume()
-        await ctx.send('▶️ Música reanudada')
+        await ctx.send('▶️ Resumed')
     else:
-        await ctx.send('❌ La música no está pausada')
+        await ctx.send('❌ Music is not paused')
 
 @bot.command(name='stop')
 async def stop(ctx):
-    """Detiene la música y limpia la cola"""
+    """Stop music and clear queue"""
     if ctx.guild.id in queues:
         player = queues[ctx.guild.id]
         player.clear_queue()
     
     if ctx.voice_client:
         ctx.voice_client.stop()
-        await ctx.send('⏹️ Música detenida y cola limpiada')
+        await ctx.send('⏹️ Stopped and queue cleared')
     else:
-        await ctx.send('❌ No estoy en un canal de voz')
+        await ctx.send('❌ Not in a voice channel')
 
 @bot.command(name='leave', aliases=['disconnect', 'dc'])
 async def leave(ctx):
-    """Desconecta el bot del canal de voz"""
+    """Disconnect from voice channel"""
     if ctx.voice_client:
         if ctx.guild.id in queues:
             del queues[ctx.guild.id]
         await ctx.voice_client.disconnect()
-        await ctx.send('👋 Desconectado del canal de voz')
+        await ctx.send('👋 Disconnected')
     else:
-        await ctx.send('❌ No estoy en un canal de voz')
+        await ctx.send('❌ Not in a voice channel')
 
 @bot.command(name='queue', aliases=['q'])
 async def queue_command(ctx):

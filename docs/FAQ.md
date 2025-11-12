@@ -47,6 +47,17 @@ Join a voice channel and type `!play song name` or `!play youtube_url`
 ### Can I play Spotify playlists?
 Yes! Use `!play spotify_playlist_url` (requires Spotify configuration). The first song starts playing immediately while the rest load in the background.
 
+### Why does the bot sometimes show options and sometimes play immediately?
+The bot is smart! It analyzes search results:
+- **With Spotify:** Searches Spotify first for exact match, then finds on YouTube
+- **Popular songs** (50M+ views, official channels) play instantly
+- **Ambiguous searches** (multiple artists, versions) show options
+- **Filters out** full albums, lyrics videos, and compilations
+This gives you speed when it's obvious, and choice when it's not.
+
+### Does Spotify help with YouTube searches?
+Yes! If you have Spotify configured, the bot searches Spotify first to get the exact artist and song name, then searches YouTube with that info. This avoids getting full albums or wrong versions.
+
 ### How do I save playlists?
 Use `!playlist_save name` to save the current queue.
 

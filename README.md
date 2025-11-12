@@ -9,6 +9,7 @@ A feature-rich Discord music bot with support for YouTube, Spotify, and playlist
 ## ✨ Features
 
 - 🎵 **YouTube Support** - Play music from YouTube (URLs and search)
+- 🧠 **Smart Search** - Intelligent search that plays popular songs instantly, shows options when ambiguous
 - 🎧 **Spotify Integration** - Play tracks, playlists, and albums from Spotify
 - ⚡ **Instant Playback** - Albums/playlists start playing immediately
 - 💾 **Playlist Management** - Save and load custom playlists
@@ -88,6 +89,19 @@ python bot.py
 
 ## 📝 Usage Examples
 
+### Smart Search
+```
+# Popular songs play instantly
+!play despacito
+# Plays immediately (5B views)
+
+# Ambiguous searches show options
+!play believer
+# Shows Imagine Dragons, Ozzy Osbourne, etc.
+!select 1
+# Plays your choice
+```
+
 ### Play from YouTube
 ```
 !play never gonna give you up
@@ -140,17 +154,33 @@ python bot.py
 
 ```
 discord-music-bot/
-├── bot.py                  # Main bot file
-├── config.py               # Configuration
-├── music_player.py         # Playback logic
-├── music_sources.py        # YouTube/Spotify integration
-├── playlist_manager.py     # Playlist management
-├── install_ffmpeg.py       # FFmpeg installer
-├── requirements.txt        # Python dependencies
-├── .env                    # Configuration (create this)
-├── .env.example            # Example configuration
-├── playlists/              # Saved playlists (JSON)
-└── docs/                   # Documentation
+├── 🤖 Core Files
+│   ├── bot.py                  # Main bot application
+│   ├── config.py               # Configuration
+│   ├── music_player.py         # Playback logic
+│   ├── music_sources.py        # YouTube/Spotify integration
+│   └── playlist_manager.py     # Playlist management
+│
+├── 📚 Documentation
+│   ├── README.md               # This file
+│   ├── CHANGELOG.md            # Version history
+│   ├── CONTRIBUTING.md         # Contribution guide
+│   └── docs/                   # Detailed guides
+│       ├── SETUP.md
+│       ├── COMMANDS.md
+│       ├── EXAMPLES.md
+│       └── FAQ.md
+│
+├── ⚙️ Configuration
+│   ├── .env                    # Your tokens (create this)
+│   ├── .env.example            # Template
+│   ├── requirements.txt        # Dependencies
+│   └── .gitignore             # Git ignore rules
+│
+└── 🛠️ Utilities
+    ├── install_ffmpeg.py       # FFmpeg installer
+    ├── start_bot.bat           # Quick start (Windows)
+    └── playlists/              # Saved playlists
 ```
 
 ## 🛠️ Technologies

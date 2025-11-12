@@ -2,16 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.0.1] - 2024-11-11
+## [2.1.0] - 2024-11-11
+
+### Added
+- **Smart Search System:** Intelligent search that adapts to confidence level
+  - **High confidence:** Plays immediately (official channels, 50M+ views)
+  - **Low confidence:** Shows 5 options with views and channel info
+  - Choose the exact song you want with `!select <number>`
+  - See duration, views, and channel for each result
+  - Auto-selects first result after 30 seconds
+- New command: `!select` (aliases: `!choose`, `!pick`)
+
+### Intelligence Features
+- **Spotify Priority:** If Spotify is configured, searches there first for better accuracy
+- Recognizes official artist channels (VEVO, Official, Topic)
+- Considers view count (50M+ = auto-play, 10M+ on official = auto-play)
+- Matches artist name in channel name
+- **Filters out:** Full albums, lyrics videos, compilations (>10 min duration)
+- Only shows options when truly ambiguous
 
 ### Improved
 - **Fast Spotify Loading:** Albums and playlists now start playing immediately
   - First song loads and plays right away
   - Remaining songs load in background
   - No more waiting for entire album/playlist to load
+- Better search accuracy with multiple options
+- All bot messages now in English
 
 ### Fixed
 - Reduced loading time for Spotify albums from ~1 minute to instant playback
+
+### Changed
+- Simplified project structure (removed redundant documentation files)
 
 ---
 

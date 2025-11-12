@@ -15,21 +15,85 @@ Real-world scenarios and examples for using the Discord Music Bot.
 
 ### Playing Your First Song
 
+**Option 1: Direct URL (fastest)**
 ```
-User joins voice channel
-!play never gonna give you up
+!play https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
 **Bot Response:**
 ```
-🔍 Searching: never gonna give you up
+🔍 Searching: https://www.youtube.com/watch?v=...
 🎵 Now Playing: Rick Astley - Never Gonna Give You Up
 ```
 
-### Playing from YouTube URL
+**Option 2: Search by name (smart search)**
+
+**Popular song (plays immediately):**
+```
+!play despacito
+```
+
+**Bot Response:**
+```
+🔍 Searching: despacito
+➕ Added to queue: Luis Fonsi - Despacito (5,000,000,000 views)
+🎵 Now Playing: Luis Fonsi - Despacito
+```
+
+**Ambiguous search (shows options):**
+```
+!play believer
+```
+
+**Bot Response:**
+```
+🔍 Searching: believer
+🎵 Multiple results found - Use !select <number> to choose:
+
+1. Imagine Dragons - Believer [3:24] • 800M views • Imagine Dragons
+2. Ozzy Osbourne - Believer [5:15] • 50M views • Ozzy Osbourne
+3. Believer (Piano Version) [3:30] • 2M views • Piano Covers
+4. Imagine Dragons - Believer (Live) [3:45] • 10M views • Live Nation
+5. Believer (8D Audio) [3:24] • 5M views • 8D Tunes
+
+💡 Type !select <number> or wait 30 seconds to auto-select #1
+```
+
+**Then select:**
+```
+!select 1
+```
+
+**Bot Response:**
+```
+➕ Added to queue: Imagine Dragons - Believer
+🎵 Now Playing: Imagine Dragons - Believer
+```
+
+### Search with Multiple Artists
+
+When searching for a common song name:
 
 ```
-!play https://www.youtube.com/watch?v=dQw4w9WgXcQ
+!play believer
+```
+
+**Bot shows options:**
+```
+🎵 Search Results - Use !select <number> to choose:
+
+1. Imagine Dragons - Believer [3:24]
+2. Ozzy Osbourne - Believer [5:15]
+3. Believer (Piano Version) [3:30]
+4. Imagine Dragons - Believer (Live) [3:45]
+5. Believer (8D Audio) [3:24]
+
+💡 Type !select <number> or wait 30 seconds to auto-select #1
+```
+
+**Choose the one you want:**
+```
+!select 1    # For Imagine Dragons version
 ```
 
 ### Basic Controls
