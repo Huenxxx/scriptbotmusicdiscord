@@ -148,7 +148,27 @@ Not currently implemented. This is a planned feature.
 Not currently implemented. This is a planned feature.
 
 ### Can I use SoundCloud?
-Not currently. Only YouTube and Spotify are supported.
+Not currently. Only YouTube, Spotify, and local files are supported.
+
+### Can I play my own music files?
+Yes! Use the `own_songs` folder:
+1. Add your audio files to `own_songs/` folder
+2. Use `!ownplay` to list them
+3. Use `!ownplay <name>` or `!ownplay <number>` to play
+
+Supports all audio formats: mp3, flac, wav, ogg, m4a, aac, wma, opus, mpeg, and more.
+
+### What audio formats are supported for local files?
+All formats supported by FFmpeg:
+- Common: mp3, wav, flac, ogg, m4a
+- Advanced: aac, wma, opus, mpeg, mpga
+- Video: mp4, webm (audio only)
+
+### Can I mix local files with YouTube/Spotify?
+Yes! Local files work in the same queue as online sources. You can mix them freely.
+
+### Can I save local songs in playlists?
+Yes! When you save a playlist with `!playlist_save`, it includes both online and local songs. When you load the playlist later, local songs are loaded directly from your `own_songs` folder.
 
 ### Can I download songs?
 No, the bot streams music without downloading.

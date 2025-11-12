@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2024-11-11
+
+### Added
+- **Local Music Support:** Play your own audio files
+  - New folder: `own_songs/` for local music files
+  - Supports all audio formats (mp3, flac, wav, ogg, m4a, aac, wma, opus, mpeg, etc.)
+  - New command: `!ownplay` (aliases: `!op`, `!local`)
+  - New command: `!ownlist` (aliases: `!ol`, `!locallist`)
+  - Search local files by name or play by number
+  - Mix local files with YouTube/Spotify in same queue
+  - **Playlist Integration:** Local songs can be saved in playlists
+  - Playlists show count of local vs online songs
+
+### Features
+- Play any audio format supported by FFmpeg
+- List all local songs with `!ownplay` or `!ownlist`
+- Search by name: `!ownplay my_song`
+- Play by number: `!ownplay 1`
+- Seamless integration with existing queue system
+
+---
+
 ## [2.1.0] - 2024-11-11
 
 ### Added

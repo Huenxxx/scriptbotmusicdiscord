@@ -213,7 +213,7 @@ Toggle loop mode.
 ## Playlist Commands
 
 ### !playlist_save (aliases: !pl_save, !pls)
-Save the current queue as a playlist.
+Save the current queue as a playlist (includes local songs).
 
 **Usage:**
 ```
@@ -225,12 +225,18 @@ Save the current queue as a playlist.
 !playlist_save my_favorites
 ```
 
-**Note:** Playlists are saved as JSON files in the `playlists/` folder.
+**Features:**
+- Saves both online and local songs
+- Shows count: `(2 local, 5 online)`
+- Local songs are saved with their file paths
+- Playlists are saved as JSON files in the `playlists/` folder
+
+**Note:** Local songs must still exist in `own_songs` folder when loading the playlist.
 
 ---
 
 ### !playlist_load (aliases: !pl_load, !pll)
-Load a saved playlist into the queue.
+Load a saved playlist into the queue (includes local songs).
 
 **Usage:**
 ```
@@ -241,6 +247,12 @@ Load a saved playlist into the queue.
 ```
 !playlist_load my_favorites
 ```
+
+**Features:**
+- Loads both online and local songs
+- Shows count: `Added 7 songs (2 local, 5 online)`
+- Local songs are loaded directly from `own_songs` folder
+- Skips local songs if files no longer exist
 
 ---
 
@@ -270,6 +282,49 @@ Delete a saved playlist.
 ```
 !playlist_delete my_favorites
 ```
+
+---
+
+## Local Music Commands
+
+### !ownplay (aliases: !op, !local)
+Play music from local files in the `own_songs` folder.
+
+**Usage:**
+```
+!ownplay                    # List all local songs
+!ownplay <name>             # Play by name
+!ownplay <number>           # Play by number
+```
+
+**Examples:**
+```
+!ownplay                    # Show all local songs
+!ownplay my_song            # Search for "my_song"
+!ownplay 1                  # Play first song in list
+```
+
+**Supported Formats:**
+- `.mp3`, `.wav`, `.ogg`, `.flac`
+- `.m4a`, `.aac`, `.wma`, `.opus`
+- `.mpeg`, `.mpga`, `.mp4`, `.webm`
+
+**Setup:**
+1. Create `own_songs` folder (auto-created)
+2. Add your audio files to the folder
+3. Use `!ownplay` to see and play them
+
+---
+
+### !ownlist (aliases: !ol, !locallist)
+List all local music files.
+
+**Usage:**
+```
+!ownlist
+```
+
+Shows up to 20 local songs with their formats.
 
 ---
 

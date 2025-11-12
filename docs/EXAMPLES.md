@@ -438,7 +438,76 @@ User3: !play song 3
 !playlist_load my_favorites
 ```
 
-### Scenario 10: Loop Modes
+### Scenario 10: Playing Local Files
+
+```
+# Add files to own_songs folder first
+# Example: own_songs/my_favorite.mp3
+
+# List all local songs
+!ownlist
+```
+
+**Bot shows:**
+```
+🎵 Local Songs (3 total):
+
+1. my_favorite .mp3
+2. custom_track .flac
+3. rare_song .wav
+
+💡 Use !ownplay <name> or !ownplay <number> to play
+```
+
+**Play by number:**
+```
+!ownplay 1
+```
+
+**Bot Response:**
+```
+➕ Added to queue: my_favorite .mp3
+🎵 Now Playing: my_favorite (Local)
+```
+
+**Play by name:**
+```
+!ownplay custom
+```
+
+**Mix with online songs:**
+```
+!play despacito          # YouTube
+!ownplay my_favorite     # Local file
+!play spotify_url        # Spotify
+!queue                   # See mixed queue
+```
+
+**Save mixed playlist:**
+```
+!play despacito
+!ownplay my_song
+!play believer
+!playlist_save my_mix
+```
+
+**Bot Response:**
+```
+💾 Playlist my_mix saved with 3 songs (1 local, 2 online)
+```
+
+**Load later:**
+```
+!playlist_load my_mix
+```
+
+**Bot Response:**
+```
+📋 Loading playlist my_mix (3 songs)...
+✅ Added 3 songs (1 local, 2 online)
+```
+
+### Scenario 11: Loop Modes
 
 **Loop Single Song:**
 ```

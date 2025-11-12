@@ -1,0 +1,10 @@
+# Place your own music files here
+# Supported formats: mp3, wav, ogg, flac, m4a, aac, wma, opus, mpeg, mpga
+
+# Example:
+# own_songs/
+#   ├── my_song.mp3
+#   ├── favorite_track.flac
+#   └── custom_audio.wav
+
+# Use !ownplay or !op to play these files

@@ -8,7 +8,7 @@ from config import PLAYLISTS_FOLDER
 class PlaylistManager:
     @staticmethod
     def save_playlist(name, songs):
-        """Guarda una playlist"""
+        """Save a playlist (supports both online and local songs)"""
         filepath = os.path.join(PLAYLISTS_FOLDER, f"{name}.json")
         
         playlist_data = {
@@ -17,7 +17,9 @@ class PlaylistManager:
                 {
                     'title': song['title'],
                     'url': song.get('url', ''),
-                    'search_query': song.get('search_query', song['title'])
+                    'search_query': song.get('search_query', song['title']),
+                    'is_local': song.get('is_local', False),
+                    'local_path': song.get('url', '') if song.get('is_local', False) else None
                 }
                 for song in songs
             ]

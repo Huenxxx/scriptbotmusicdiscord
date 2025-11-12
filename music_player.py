@@ -43,11 +43,20 @@ class MusicPlayer:
             return
         
         try:
-            source = discord.FFmpegPCMAudio(song['url'], **FFMPEG_OPTIONS)
+            # Check if it's a local file
+            is_local = song.get('is_local', False)
+            
+            if is_local:
+                # Local file - use direct path without streaming options
+                source = discord.FFmpegPCMAudio(song['url'])
+            else:
+                # Online source - use streaming options
+                source = discord.FFmpegPCMAudio(song['url'], **FFMPEG_OPTIONS)
+            
             self.voice_client.play(source, after=self.play_next_song)
-            await self.channel.send(f'🎵 Reproduciendo: **{song["title"]}**')
+            await self.channel.send(f'🎵 Now Playing: **{song["title"]}**')
         except Exception as e:
-            await self.channel.send(f'❌ Error al reproducir: {str(e)}')
+            await self.channel.send(f'❌ Error playing: {str(e)}')
             await self.play_next()
 
     def clear_queue(self):

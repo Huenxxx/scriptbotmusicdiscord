@@ -36,6 +36,11 @@ ffmpeg
 # Playlists (optional - remove if you want to commit them)
 # playlists/*.json
 
+# Local music files (don't upload personal music)
+own_songs/*
+!own_songs/.gitkeep
+!own_songs/README.md
+
 # IDE
 .vscode/
 .idea/

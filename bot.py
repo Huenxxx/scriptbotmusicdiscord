@@ -10,6 +10,7 @@ from config import DISCORD_TOKEN, COMMAND_PREFIX, FFMPEG_PATH
 from music_player import MusicPlayer
 from music_sources import search_song, get_spotify_playlist, get_spotify_album, extract_spotify_id, is_spotify_url, ytdl_search, SPOTIFY_AVAILABLE
 from playlist_manager import PlaylistManager
+from local_music import get_local_songs, search_local_songs, get_song_by_index, format_song_list
 
 # Configuración del bot
 intents = discord.Intents.default()
@@ -252,6 +253,108 @@ async def select(ctx, number: int):
     else:
         await ctx.send(f'➕ Added to queue: **{selected["title"]}**')
 
+# ==================== LOCAL MUSIC COMMANDS ====================
+
+@bot.command(name='ownplay', aliases=['op', 'local'])
+async def ownplay(ctx, *, query=None):
+    """Play music from local files in own_songs folder"""
+    if not ctx.author.voice:
+        await ctx.send('❌ You must be in a voice channel')
+        return
+
+    channel = ctx.author.voice.channel
+    
+    if ctx.voice_client is None:
+        voice_client = await channel.connect()
+    else:
+        voice_client = ctx.voice_client
+
+    if ctx.guild.id not in queues:
+        queues[ctx.guild.id] = MusicPlayer(ctx)
+        queues[ctx.guild.id].voice_client = voice_client
+
+    player = queues[ctx.guild.id]
+    player.voice_client = voice_client
+
+    # If no query, show all local songs
+    if not query:
+        songs = get_local_songs()
+        if not songs:
+            await ctx.send('❌ No local songs found in `own_songs` folder\n💡 Add .mp3, .flac, .wav, or other audio files to the folder')
+            return
+        
+        message = format_song_list(songs)
+        message += '\n\n💡 Use `!ownplay <name>` or `!ownplay <number>` to play'
+        await ctx.send(message)
+        return
+    
+    # Try to parse as number first
+    try:
+        index = int(query) - 1
+        song = get_song_by_index(index)
+        if song:
+            # Create song data for player
+            song_data = {
+                'url': song['path'],
+                'title': f"{song['name']} (Local)",
+                'duration': 0,
+                'is_local': True
+            }
+            
+            player.queue.append(song_data)
+            
+            if not voice_client.is_playing() and not voice_client.is_paused():
+                await player.play_next()
+            else:
+                await ctx.send(f'➕ Added to queue: **{song["name"]}** `.{song["format"]}`')
+            return
+    except ValueError:
+        pass
+    
+    # Search by name
+    results = search_local_songs(query)
+    
+    if not results:
+        await ctx.send(f'❌ No local songs found matching: **{query}**\n💡 Use `!ownplay` to see all available songs')
+        return
+    
+    if len(results) == 1:
+        # Play directly
+        song = results[0]
+        song_data = {
+            'url': song['path'],
+            'title': f"{song['name']} (Local)",
+            'duration': 0,
+            'is_local': True
+        }
+        
+        player.queue.append(song_data)
+        
+        if not voice_client.is_playing() and not voice_client.is_paused():
+            await player.play_next()
+        else:
+            await ctx.send(f'➕ Added to queue: **{song["name"]}** `.{song["format"]}`')
+    else:
+        # Multiple results - show options
+        message = f'🎵 **Found {len(results)} local songs:**\n\n'
+        for i, song in enumerate(results, 1):
+            message += f'**{i}.** {song["name"]} `.{song["format"]}`\n'
+        message += '\n💡 Use `!ownplay <number>` to play'
+        await ctx.send(message)
+
+@bot.command(name='ownlist', aliases=['ol', 'locallist'])
+async def ownlist(ctx):
+    """List all local music files"""
+    songs = get_local_songs()
+    
+    if not songs:
+        await ctx.send('❌ No local songs found in `own_songs` folder\n💡 Add .mp3, .flac, .wav, or other audio files to the folder')
+        return
+    
+    message = format_song_list(songs, max_display=20)
+    message += '\n\n💡 Use `!ownplay <name>` or `!ownplay <number>` to play'
+    await ctx.send(message)
+
 @bot.command(name='skip', aliases=['s'])
 async def skip(ctx):
     """Skip current song"""
@@ -416,15 +519,15 @@ async def loop(ctx, mode: str = None):
 
 @bot.command(name='playlist_save', aliases=['pl_save', 'pls'])
 async def playlist_save(ctx, name: str):
-    """Guarda la cola actual como una playlist"""
+    """Save current queue as a playlist (includes local songs)"""
     if ctx.guild.id not in queues:
-        await ctx.send('❌ La cola está vacía')
+        await ctx.send('❌ Queue is empty')
         return
     
     player = queues[ctx.guild.id]
     
     if len(player.queue) == 0 and player.current is None:
-        await ctx.send('❌ No hay canciones para guardar')
+        await ctx.send('❌ No songs to save')
         return
     
     songs = []
@@ -432,8 +535,19 @@ async def playlist_save(ctx, name: str):
         songs.append(player.current)
     songs.extend(list(player.queue))
     
+    # Count local vs online
+    local_count = sum(1 for s in songs if s.get('is_local', False))
+    online_count = len(songs) - local_count
+    
     PlaylistManager.save_playlist(name, songs)
-    await ctx.send(f'💾 Playlist **{name}** guardada con {len(songs)} canciones')
+    
+    summary = f'💾 Playlist **{name}** saved with {len(songs)} songs'
+    if local_count > 0 and online_count > 0:
+        summary += f' ({local_count} local, {online_count} online)'
+    elif local_count > 0:
+        summary += f' (all local)'
+    
+    await ctx.send(summary)
 
 @bot.command(name='playlist_load', aliases=['pl_load', 'pll'])
 async def playlist_load(ctx, name: str):
@@ -463,22 +577,52 @@ async def playlist_load(ctx, name: str):
     player.voice_client = voice_client
     
     songs = playlist['songs']
-    await ctx.send(f'📋 Cargando playlist **{name}** ({len(songs)} canciones)...')
+    await ctx.send(f'📋 Loading playlist **{name}** ({len(songs)} songs)...')
     
     loop = asyncio.get_event_loop()
     added = 0
+    local_count = 0
+    online_count = 0
     
     for song in songs:
         try:
-            search_query = song.get('search_query', song['title'])
-            data = await loop.run_in_executor(None, lambda q=search_query: ytdl_search(q))
-            if data:
-                player.queue.append(data)
-                added += 1
+            # Check if it's a local song
+            if song.get('is_local', False):
+                local_path = song.get('local_path')
+                if local_path and os.path.exists(local_path):
+                    # Add local song directly
+                    data = {
+                        'url': local_path,
+                        'title': song['title'],
+                        'duration': 0,
+                        'is_local': True
+                    }
+                    player.queue.append(data)
+                    added += 1
+                    local_count += 1
+                else:
+                    # Local file not found, skip
+                    continue
+            else:
+                # Online song - search on YouTube
+                search_query = song.get('search_query', song['title'])
+                data = await loop.run_in_executor(None, lambda q=search_query: ytdl_search(q))
+                if data:
+                    player.queue.append(data)
+                    added += 1
+                    online_count += 1
         except:
             continue
     
-    await ctx.send(f'✅ Añadidas {added} canciones de la playlist')
+    summary = f'✅ Added {added} songs'
+    if local_count > 0 and online_count > 0:
+        summary += f' ({local_count} local, {online_count} online)'
+    elif local_count > 0:
+        summary += f' (all local)'
+    elif online_count > 0:
+        summary += f' (all online)'
+    
+    await ctx.send(summary)
     
     if not voice_client.is_playing() and not voice_client.is_paused():
         await player.play_next()
