@@ -5,10 +5,11 @@ Soporta YouTube, Spotify, y gestión de playlists
 import discord
 from discord.ext import commands
 import asyncio
+import os
 
 from config import DISCORD_TOKEN, COMMAND_PREFIX, FFMPEG_PATH
 from music_player import MusicPlayer
-from music_sources import search_song, get_spotify_playlist, get_spotify_album, extract_spotify_id, is_spotify_url, ytdl_search, SPOTIFY_AVAILABLE
+from music_sources import search_song, get_spotify_playlist, get_spotify_album, extract_spotify_id, is_spotify_url, ytdl_search, SPOTIFY_AVAILABLE, search_spotify_track
 from playlist_manager import PlaylistManager
 from local_music import get_local_songs, search_local_songs, get_song_by_index, format_song_list
 
