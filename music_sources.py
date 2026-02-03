@@ -31,6 +31,7 @@ def ytdl_search(query, max_results=1):
                     'title': info['title'],
                     'duration': info.get('duration', 0),
                     'thumbnail': info.get('thumbnail', ''),
+                    'webpage_url': info.get('webpage_url', query),
                     'view_count': info.get('view_count', 0),
                     'channel': info.get('channel', ''),
                 }
@@ -48,6 +49,7 @@ def ytdl_search(query, max_results=1):
                             'title': entry['title'],
                             'duration': entry.get('duration', 0),
                             'thumbnail': entry.get('thumbnail', ''),
+                            'webpage_url': entry.get('webpage_url', ''),
                             'view_count': entry.get('view_count', 0),
                             'channel': entry.get('channel', ''),
                         }

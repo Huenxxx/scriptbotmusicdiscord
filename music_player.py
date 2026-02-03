@@ -4,7 +4,8 @@ Clase para gestionar la reproducción de música
 import discord
 import asyncio
 from collections import deque
-from config import FFMPEG_OPTIONS
+from config import FFMPEG_OPTIONS, YDL_OPTIONS
+import yt_dlp
 
 class MusicPlayer:
     def __init__(self, ctx):
@@ -50,14 +51,60 @@ class MusicPlayer:
                 # Local file - use direct path without streaming options
                 source = discord.FFmpegPCMAudio(song['url'])
             else:
-                # Online source - use streaming options
-                source = discord.FFmpegPCMAudio(song['url'], **FFMPEG_OPTIONS)
+                # Online source - get fresh stream URL before playing
+                stream_url = None
+                
+                # Always get fresh URL using webpage_url
+                webpage_url = song.get('webpage_url') or song.get('url')
+                print(f'[DEBUG] Getting fresh URL for: {webpage_url}')
+                
+                try:
+                    loop = asyncio.get_event_loop()
+                    stream_url = await loop.run_in_executor(None, lambda: self._get_fresh_url(webpage_url))
+                    print(f'[DEBUG] Fresh URL obtained: {stream_url[:100] if stream_url else "None"}...')
+                except Exception as e:
+                    print(f'[ERROR] Error getting fresh URL: {e}')
+                
+                if not stream_url:
+                    await self.channel.send('❌ Could not get stream URL')
+                    await self.play_next()
+                    return
+                
+                # Add headers for YouTube
+                ffmpeg_opts = FFMPEG_OPTIONS.copy()
+                ffmpeg_opts['before_options'] = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin -headers "User-Agent: Mozilla/5.0"'
+                
+                source = discord.FFmpegPCMAudio(stream_url, **ffmpeg_opts)
             
             self.voice_client.play(source, after=self.play_next_song)
             await self.channel.send(f'🎵 Now Playing: **{song["title"]}**')
         except Exception as e:
             await self.channel.send(f'❌ Error playing: {str(e)}')
             await self.play_next()
+
+    def _get_fresh_url(self, webpage_url):
+        """Obtiene una URL fresca del stream desde la webpage_url"""
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': False,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(webpage_url, download=False)
+                # Get the direct URL
+                if 'url' in info:
+                    return info['url']
+                # Sometimes it's in formats
+                if 'formats' in info:
+                    for f in info['formats']:
+                        if f.get('acodec') != 'none':
+                            return f['url']
+                return info.get('url')
+        except Exception as e:
+            print(f'Error getting fresh URL: {e}')
+            return None
 
     def clear_queue(self):
         """Limpia la cola"""
