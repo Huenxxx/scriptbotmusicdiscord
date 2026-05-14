@@ -16,7 +16,7 @@ import discord
 import wavelink
 from discord.ext import commands
 
-from config import LAVALINK_HOST, LAVALINK_PORT, LAVALINK_PASSWORD
+import config as _config
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -99,12 +99,15 @@ class LavalinkPlayer:
 
 async def setup_wavelink(bot: commands.Bot):
     """Conecta wavelink al servidor Lavalink. Llamar desde on_ready()."""
+    host     = _config.LAVALINK_HOST
+    port     = _config.LAVALINK_PORT
+    password = _config.LAVALINK_PASSWORD
     node = wavelink.Node(
-        uri=f'http://{LAVALINK_HOST}:{LAVALINK_PORT}',
-        password=LAVALINK_PASSWORD,
+        uri=f'http://{host}:{port}',
+        password=password,
     )
     await wavelink.Pool.connect(nodes=[node], client=bot, cache_capacity=100)
-    print(f'✅ Lavalink: conectado a {LAVALINK_HOST}:{LAVALINK_PORT}')
+    print(f'✅ Lavalink: conectado a {host}:{port}')
 
 
 # ─── Búsqueda ───────────────────────────────────────────────────────────────

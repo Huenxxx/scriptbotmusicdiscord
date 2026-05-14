@@ -106,7 +106,17 @@ def main():
     if LAVALINK_LOCAL:
         print('📦 Modo: LOCAL  (arrancando Lavalink.jar)')
     else:
-        print(f'☁️  Modo: CLOUD  (conectando a {LAVALINK_HOST}:{LAVALINK_PORT})')
+        # Detectar configuración incorrecta: cloud mode pero host sigue siendo localhost
+        if LAVALINK_HOST in ('localhost', '127.0.0.1'):
+            print('⚠️  LAVALINK_LOCAL=false pero LAVALINK_HOST sigue siendo localhost.')
+            print('   Usando nodo público de fallback: lavalink.darrennathanael.com:80')
+            # Parchear en caliente las variables de config
+            import config as _cfg
+            _cfg.LAVALINK_HOST     = 'lavalink.darrennathanael.com'
+            _cfg.LAVALINK_PORT     = 80
+            _cfg.LAVALINK_PASSWORD = 'youshallnotpass'
+        else:
+            print(f'☁️  Modo: CLOUD  (conectando a {LAVALINK_HOST}:{LAVALINK_PORT})')
 
     lavalink_proc = start_lavalink()
 
