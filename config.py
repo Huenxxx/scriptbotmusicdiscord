@@ -15,6 +15,11 @@ DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID', '')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET', '')
 
+# ── Lavalink ────────────────────────────────────────────────────────────────
+LAVALINK_HOST     = os.getenv('LAVALINK_HOST', 'localhost')
+LAVALINK_PORT     = int(os.getenv('LAVALINK_PORT', '2333'))
+LAVALINK_PASSWORD = os.getenv('LAVALINK_PASSWORD', 'youshallnotpass')
+
 # Prefijo de comandos
 COMMAND_PREFIX = '!'
 
