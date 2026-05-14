@@ -19,6 +19,8 @@ import time
 import shutil
 import os
 import urllib.request
+import asyncio
+from aiohttp import web
 
 from config import (
     DISCORD_TOKEN,
@@ -91,8 +93,43 @@ def start_lavalink() -> subprocess.Popen | None:
 
     return proc
 
+# ─── Health-check HTTP server (para Render Web Service) ──────────────────────
+
+async def start_health_server():
+    """
+    Servidor HTTP mínimo que responde 200 OK en /health.
+    Render necesita que el proceso escuche en un puerto para no matarlo.
+    Escucha en el puerto indicado por la variable PORT (Render lo asigna automáticamente).
+    """
+    port = int(os.getenv('PORT', '10000'))
+
+    async def health(request):
+        return web.Response(text='OK')
+
+    app = web.Application()
+    app.router.add_get('/', health)
+    app.router.add_get('/health', health)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f'🌐 Health server escuchando en puerto {port}')
+
 
 # ─── Arranque del bot ─────────────────────────────────────────────────────────
+
+async def run_bot():
+    """Arranca el bot de Discord de forma asíncrona."""
+    import discord
+    from bot import bot
+
+    try:
+        await bot.start(DISCORD_TOKEN)
+    except discord.LoginFailure:
+        print('❌ Token de Discord inválido')
+        sys.exit(1)
+
 
 def main():
     print('=' * 60)
@@ -106,11 +143,8 @@ def main():
     if LAVALINK_LOCAL:
         print('📦 Modo: LOCAL  (arrancando Lavalink.jar)')
     else:
-        # Detectar configuración incorrecta: cloud mode pero host sigue siendo localhost
         if LAVALINK_HOST in ('localhost', '127.0.0.1'):
-            print('⚠️  LAVALINK_LOCAL=false pero LAVALINK_HOST sigue siendo localhost.')
-            print('   Usando nodo público de fallback: lavalink.darrennathanael.com:80')
-            # Parchear en caliente las variables de config
+            print('⚠️  LAVALINK_HOST=localhost en modo cloud, usando nodo público de fallback.')
             import config as _cfg
             _cfg.LAVALINK_HOST     = 'lavalink.darrennathanael.com'
             _cfg.LAVALINK_PORT     = 80
@@ -120,16 +154,15 @@ def main():
 
     lavalink_proc = start_lavalink()
 
+    async def async_main():
+        # Arrancar health server y bot en paralelo
+        on_render = bool(os.getenv('PORT'))
+        if on_render:
+            await start_health_server()
+        await run_bot()
+
     try:
-        import discord
-        from bot import bot
-
-        print('🤖 Iniciando bot...')
-        bot.run(DISCORD_TOKEN)
-
-    except discord.LoginFailure:
-        print('❌ Token de Discord inválido')
-        sys.exit(1)
+        asyncio.run(async_main())
     except KeyboardInterrupt:
         print('\n👋 Bot detenido')
     finally:
