@@ -35,6 +35,14 @@ else:
     LAVALINK_PORT     = int(os.getenv('LAVALINK_PORT', str(_PUBLIC_PORT)))
     LAVALINK_PASSWORD = os.getenv('LAVALINK_PASSWORD', _PUBLIC_PASSWORD)
 
+# Seguridad SSL: auto-detectar si el puerto es 443 o el host es de cloud (Railway, etc.)
+_secure_env = os.getenv('LAVALINK_SECURE', '')
+if _secure_env:
+    LAVALINK_SECURE = _secure_env.lower() == 'true'
+else:
+    _cloud_domains = ('railway.app', 'render.com', 'herokuapp.com', 'fly.dev', 'up.railway.app')
+    LAVALINK_SECURE = LAVALINK_PORT == 443 or any(LAVALINK_HOST.endswith(d) for d in _cloud_domains)
+
 
 # Prefijo de comandos
 COMMAND_PREFIX = '!'

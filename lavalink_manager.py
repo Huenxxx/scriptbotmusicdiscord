@@ -108,18 +108,21 @@ async def setup_wavelink(bot: commands.Bot):
     local    = _config.LAVALINK_LOCAL
 
     if local:
-        # Solo el nodo local
+        # Solo el nodo local (nunca SSL)
         candidates = [{'uri': f'http://{host}:{port}', 'password': password,
                        'identifier': 'local'}]
     else:
+        # Protocolo según configuración de seguridad
+        scheme = 'https' if _config.LAVALINK_SECURE else 'http'
         # Nodo configurado + fallbacks públicos conocidos
         candidates = [
-            {'uri': f'http://{host}:{port}',                'password': password,             'identifier': 'primary'},
-            {'uri': 'https://lavalink.devz.cloud:443',      'password': 'DevZcloud',          'identifier': 'devz'},
-            {'uri': 'http://lava.link:80',                  'password': 'disforge.com',       'identifier': 'lava-link'},
-            {'uri': 'https://lavalink.jompo.cloud:80',      'password': 'youshallnotpass',    'identifier': 'jompo'},
-            {'uri': 'http://lavalink.darrennathanael.com:80','password': 'youshallnotpass',   'identifier': 'darren'},
+            {'uri': f'{scheme}://{host}:{port}',                'password': password,             'identifier': 'primary'},
+            {'uri': 'https://lavalink.devz.cloud:443',           'password': 'DevZcloud',          'identifier': 'devz'},
+            {'uri': 'http://lava.link:80',                       'password': 'disforge.com',       'identifier': 'lava-link'},
+            {'uri': 'https://lavalink.jompo.cloud:80',           'password': 'youshallnotpass',    'identifier': 'jompo'},
+            {'uri': 'http://lavalink.darrennathanael.com:80',    'password': 'youshallnotpass',    'identifier': 'darren'},
         ]
+
 
     nodes = [
         wavelink.Node(uri=c['uri'], password=c['password'], identifier=c['identifier'])
