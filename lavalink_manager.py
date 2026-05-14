@@ -98,16 +98,45 @@ class LavalinkPlayer:
 # ─── Configuración del nodo ─────────────────────────────────────────────────
 
 async def setup_wavelink(bot: commands.Bot):
-    """Conecta wavelink al servidor Lavalink. Llamar desde on_ready()."""
+    """
+    Conecta wavelink al servidor Lavalink.
+    Si el nodo principal falla, intenta los nodos públicos de fallback en orden.
+    """
     host     = _config.LAVALINK_HOST
     port     = _config.LAVALINK_PORT
     password = _config.LAVALINK_PASSWORD
-    node = wavelink.Node(
-        uri=f'http://{host}:{port}',
-        password=password,
-    )
-    await wavelink.Pool.connect(nodes=[node], client=bot, cache_capacity=100)
-    print(f'✅ Lavalink: conectado a {host}:{port}')
+    local    = _config.LAVALINK_LOCAL
+
+    # Lista de nodos a intentar: el configurado primero, luego fallbacks públicos
+    # (solo se añaden fallbacks en modo cloud)
+    candidates = [{'uri': f'http://{host}:{port}', 'password': password}]
+
+    if not local:
+        candidates += [
+            {'uri': 'https://lavalink.devz.cloud:443',      'password': 'DevZcloud'},
+            {'uri': 'http://lava.link:80',                   'password': 'disforge.com'},
+            {'uri': 'https://lavalink.lexnet.fr:443',        'password': 'lexnet'},
+        ]
+
+    last_error = None
+    for cand in candidates:
+        try:
+            print(f'🔗 Intentando nodo Lavalink: {cand["uri"]}')
+            node = wavelink.Node(uri=cand['uri'], password=cand['password'])
+            await wavelink.Pool.connect(nodes=[node], client=bot, cache_capacity=100)
+            print(f'✅ Lavalink conectado: {cand["uri"]}')
+            return
+        except Exception as e:
+            print(f'   ❌ Falló ({e}), probando siguiente...')
+            last_error = e
+            # Limpiar el pool antes de reintentar
+            try:
+                await wavelink.Pool.close()
+            except Exception:
+                pass
+
+    print(f'⚠️  No se pudo conectar a ningún nodo Lavalink: {last_error}')
+
 
 
 # ─── Búsqueda ───────────────────────────────────────────────────────────────
