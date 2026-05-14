@@ -19,6 +19,9 @@ SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET', '')
 LAVALINK_HOST     = os.getenv('LAVALINK_HOST', 'localhost')
 LAVALINK_PORT     = int(os.getenv('LAVALINK_PORT', '2333'))
 LAVALINK_PASSWORD = os.getenv('LAVALINK_PASSWORD', 'youshallnotpass')
+# True  → main.py arranca el Lavalink.jar local (desarrollo en PC)
+# False → main.py solo conecta al servidor indicado por HOST/PORT (cloud/hosting)
+LAVALINK_LOCAL    = os.getenv('LAVALINK_LOCAL', 'true').lower() == 'true'
 
 # Prefijo de comandos
 COMMAND_PREFIX = '!'
