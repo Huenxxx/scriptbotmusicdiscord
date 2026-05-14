@@ -13,6 +13,7 @@ from config import DISCORD_TOKEN, COMMAND_PREFIX
 from lavalink_manager import (
     LavalinkPlayer, setup_wavelink,
     lavalink_search, lavalink_load_playlist, fmt_duration,
+    lavalink_connected,
 )
 from music_sources import is_spotify_url, extract_spotify_id
 from playlist_manager import PlaylistManager
@@ -94,6 +95,14 @@ async def on_wavelink_node_ready(payload: wavelink.NodeReadyEventPayload):
 @bot.command(name='play', aliases=['p'])
 async def play(ctx: commands.Context, *, query: str):
     """Reproduce música desde YouTube, Spotify, SoundCloud o búsqueda de texto."""
+    if not lavalink_connected():
+        await ctx.send(
+            '❌ **Lavalink no está conectado.**\n'
+            'El servidor de audio aún está iniciando o no hay nodos disponibles.\n'
+            '⏳ Espera unos segundos y vuelve a intentarlo.'
+        )
+        return
+
     lp = await get_or_create_player(ctx)
     if lp is None:
         return

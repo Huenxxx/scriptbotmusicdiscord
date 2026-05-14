@@ -100,42 +100,47 @@ class LavalinkPlayer:
 async def setup_wavelink(bot: commands.Bot):
     """
     Conecta wavelink al servidor Lavalink.
-    Si el nodo principal falla, intenta los nodos públicos de fallback en orden.
+    Intenta todos los nodos candidatos a la vez – el primero que conecte gana.
     """
     host     = _config.LAVALINK_HOST
     port     = _config.LAVALINK_PORT
     password = _config.LAVALINK_PASSWORD
     local    = _config.LAVALINK_LOCAL
 
-    # Lista de nodos a intentar: el configurado primero, luego fallbacks públicos
-    # (solo se añaden fallbacks en modo cloud)
-    candidates = [{'uri': f'http://{host}:{port}', 'password': password}]
-
-    if not local:
-        candidates += [
-            {'uri': 'https://lavalink.devz.cloud:443',      'password': 'DevZcloud'},
-            {'uri': 'http://lava.link:80',                   'password': 'disforge.com'},
-            {'uri': 'https://lavalink.lexnet.fr:443',        'password': 'lexnet'},
+    if local:
+        # Solo el nodo local
+        candidates = [{'uri': f'http://{host}:{port}', 'password': password,
+                       'identifier': 'local'}]
+    else:
+        # Nodo configurado + fallbacks públicos conocidos
+        candidates = [
+            {'uri': f'http://{host}:{port}',                'password': password,             'identifier': 'primary'},
+            {'uri': 'https://lavalink.devz.cloud:443',      'password': 'DevZcloud',          'identifier': 'devz'},
+            {'uri': 'http://lava.link:80',                  'password': 'disforge.com',       'identifier': 'lava-link'},
+            {'uri': 'https://lavalink.jompo.cloud:80',      'password': 'youshallnotpass',    'identifier': 'jompo'},
+            {'uri': 'http://lavalink.darrennathanael.com:80','password': 'youshallnotpass',   'identifier': 'darren'},
         ]
 
-    last_error = None
-    for cand in candidates:
-        try:
-            print(f'🔗 Intentando nodo Lavalink: {cand["uri"]}')
-            node = wavelink.Node(uri=cand['uri'], password=cand['password'])
-            await wavelink.Pool.connect(nodes=[node], client=bot, cache_capacity=100)
-            print(f'✅ Lavalink conectado: {cand["uri"]}')
-            return
-        except Exception as e:
-            print(f'   ❌ Falló ({e}), probando siguiente...')
-            last_error = e
-            # Limpiar el pool antes de reintentar
-            try:
-                await wavelink.Pool.close()
-            except Exception:
-                pass
+    nodes = [
+        wavelink.Node(uri=c['uri'], password=c['password'], identifier=c['identifier'])
+        for c in candidates
+    ]
 
-    print(f'⚠️  No se pudo conectar a ningún nodo Lavalink: {last_error}')
+    print(f'🔗 Intentando conectar a {len(nodes)} nodo(s) Lavalink...')
+    try:
+        await wavelink.Pool.connect(nodes=nodes, client=bot, cache_capacity=100)
+        print('✅ Nodos Lavalink registrados – esperando conexión...')
+    except Exception as e:
+        print(f'⚠️  Error al registrar nodos Lavalink: {e}')
+
+
+def lavalink_connected() -> bool:
+    """Devuelve True si hay al menos un nodo Lavalink conectado."""
+    try:
+        wavelink.Pool.get_node()
+        return True
+    except Exception:
+        return False
 
 
 
