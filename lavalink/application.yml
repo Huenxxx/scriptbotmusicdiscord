@@ -13,8 +13,7 @@ plugins:
     clients:
       - MUSIC
       - ANDROID_TESTSUITE
-      - WEB
-      - WEBEMBEDDED
+      - TVHTML5EMBEDDED
 
 lavalink:
   plugins:
