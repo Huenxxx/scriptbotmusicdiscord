@@ -1,79 +1,124 @@
 """
-Funciones para buscar música desde diferentes fuentes
+Funciones para buscar música desde diferentes fuentes.
+Spotify se resuelve directamente con yt-dlp (sin necesidad de API Premium).
 """
 import yt_dlp
 import re
-from config import YDL_OPTIONS, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+from config import YDL_OPTIONS
 
-# Intentar importar spotipy
-try:
-    import spotipy
-    from spotipy.oauth2 import SpotifyClientCredentials
-    SPOTIFY_AVAILABLE = bool(SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET)
-    
-    if SPOTIFY_AVAILABLE:
-        spotify = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-            client_id=SPOTIFY_CLIENT_ID,
-            client_secret=SPOTIFY_CLIENT_SECRET
-        ))
-except ImportError:
-    SPOTIFY_AVAILABLE = False
-    print('⚠️ Spotipy no instalado. Instala con: pip install spotipy')
+# Spotify siempre disponible a través de yt-dlp (sin API)
+SPOTIFY_AVAILABLE = True
+
+def _build_entry(entry):
+    """Convierte una entrada de yt-dlp en el diccionario estándar del bot."""
+    return {
+        'url': entry.get('url', entry.get('webpage_url', '')),
+        'title': entry.get('title', 'Unknown'),
+        'duration': entry.get('duration', 0),
+        'thumbnail': entry.get('thumbnail', ''),
+        'webpage_url': entry.get('webpage_url', ''),
+        'view_count': entry.get('view_count', 0),
+        'channel': entry.get('channel', entry.get('uploader', '')),
+    }
+
+def _try_extract_entry(ydl, entry):
+    """
+    Intenta obtener la URL de audio de una entrada.
+    Si el video no está disponible devuelve None en lugar de lanzar excepción.
+    """
+    try:
+        webpage_url = entry.get('webpage_url') or entry.get('url', '')
+        if not webpage_url:
+            return None
+        info = ydl.extract_info(webpage_url, download=False)
+        if info and info.get('url'):
+            return {
+                'url': info['url'],
+                'title': info.get('title', entry.get('title', 'Unknown')),
+                'duration': info.get('duration', 0),
+                'thumbnail': info.get('thumbnail', ''),
+                'webpage_url': info.get('webpage_url', webpage_url),
+                'view_count': info.get('view_count', 0),
+                'channel': info.get('channel', info.get('uploader', '')),
+            }
+    except Exception as e:
+        print(f'Video no disponible ({entry.get("title", "?")}): {e}')
+    return None
 
 def ytdl_search(query, max_results=1):
-    """Search and extract information from YouTube"""
-    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-        try:
-            if 'youtube.com' in query or 'youtu.be' in query:
+    """
+    Busca en YouTube y devuelve resultados con URL de audio verificada.
+    Cuando un video no está disponible prueba automáticamente el siguiente.
+    """
+    # Opciones para la fase de búsqueda (sólo metadatos, sin verificar disponibilidad)
+    search_opts = {
+        **YDL_OPTIONS,
+        'extract_flat': True,   # Solo metadatos, sin descargar streams
+        'quiet': True,
+        'no_warnings': True,
+    }
+    # Opciones para la fase de extracción real de la URL de audio
+    extract_opts = {
+        **YDL_OPTIONS,
+        'extract_flat': False,
+        'quiet': True,
+        'no_warnings': True,
+    }
+
+    try:
+        # --- URL directa de YouTube ---
+        if 'youtube.com' in query or 'youtu.be' in query:
+            with yt_dlp.YoutubeDL(extract_opts) as ydl:
                 info = ydl.extract_info(query, download=False)
-                return {
-                    'url': info['url'],
-                    'title': info['title'],
-                    'duration': info.get('duration', 0),
-                    'thumbnail': info.get('thumbnail', ''),
-                    'webpage_url': info.get('webpage_url', query),
-                    'view_count': info.get('view_count', 0),
-                    'channel': info.get('channel', ''),
-                }
-            else:
-                # Search with multiple results
-                search_query = f"ytsearch{max_results}:{query}"
-                info = ydl.extract_info(search_query, download=False)
-                
-                if max_results == 1:
-                    # Return single result
-                    if 'entries' in info and info['entries']:
-                        entry = info['entries'][0]
-                        return {
-                            'url': entry['url'],
-                            'title': entry['title'],
-                            'duration': entry.get('duration', 0),
-                            'thumbnail': entry.get('thumbnail', ''),
-                            'webpage_url': entry.get('webpage_url', ''),
-                            'view_count': entry.get('view_count', 0),
-                            'channel': entry.get('channel', ''),
-                        }
-                else:
-                    # Return multiple results
-                    results = []
-                    if 'entries' in info:
-                        for entry in info['entries'][:max_results]:
-                            if entry:
-                                results.append({
-                                    'url': entry['url'],
-                                    'title': entry['title'],
-                                    'duration': entry.get('duration', 0),
-                                    'thumbnail': entry.get('thumbnail', ''),
-                                    'webpage_url': entry.get('webpage_url', ''),
-                                    'view_count': entry.get('view_count', 0),
-                                    'channel': entry.get('channel', ''),
-                                })
-                    return results
-            
+                if info and info.get('url'):
+                    return {
+                        'url': info['url'],
+                        'title': info.get('title', 'Unknown'),
+                        'duration': info.get('duration', 0),
+                        'thumbnail': info.get('thumbnail', ''),
+                        'webpage_url': info.get('webpage_url', query),
+                        'view_count': info.get('view_count', 0),
+                        'channel': info.get('channel', ''),
+                    }
             return None
-        except Exception as e:
-            print(f'Error in ytdl_search: {e}')
+
+        # --- Búsqueda por texto ---
+        # Pedimos más candidatos de los necesarios para poder saltar los no disponibles
+        candidates = max(max_results * 3, 8)
+        search_query = f"ytsearch{candidates}:{query}"
+
+        with yt_dlp.YoutubeDL(search_opts) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+
+        if not info or 'entries' not in info:
+            return None if max_results == 1 else []
+
+        entries = [e for e in info['entries'] if e]
+
+        if max_results == 1:
+            # Devolver el primer candidato disponible
+            with yt_dlp.YoutubeDL(extract_opts) as ydl:
+                for entry in entries:
+                    result = _try_extract_entry(ydl, entry)
+                    if result:
+                        return result
+            print(f'No se encontró ningún video disponible para: {query}')
             return None
+        else:
+            # Devolver hasta max_results candidatos disponibles
+            results = []
+            with yt_dlp.YoutubeDL(extract_opts) as ydl:
+                for entry in entries:
+                    if len(results) >= max_results:
+                        break
+                    result = _try_extract_entry(ydl, entry)
+                    if result:
+                        results.append(result)
+            return results
+
+    except Exception as e:
+        print(f'Error in ytdl_search: {e}')
+        return None if max_results == 1 else []
 
 def is_confident_result(result, query):
     """
@@ -148,105 +193,87 @@ def extract_spotify_id(url):
     
     return None, None
 
-def get_spotify_track(track_id):
-    """Obtiene información de una canción de Spotify"""
-    if not SPOTIFY_AVAILABLE:
-        return None
-    
+def get_spotify_track(spotify_url):
+    """
+    Resuelve una canción de Spotify usando yt-dlp directamente
+    (sin necesidad de API ni suscripción Premium).
+    Extrae el título y artista y busca en YouTube.
+    """
     try:
-        track = spotify.track(track_id)
-        artist = track['artists'][0]['name']
-        title = track['name']
-        search_query = f"{artist} {title}"
-        
-        # Buscar en YouTube
-        return ytdl_search(search_query)
+        ydl_opts = {
+            **YDL_OPTIONS,
+            'extract_flat': False,
+            'noplaylist': True,
+            'quiet': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(spotify_url, download=False)
+            if info:
+                artist = ''
+                title = info.get('title', '')
+                # yt-dlp devuelve 'uploader' como artista en Spotify
+                if info.get('uploader'):
+                    artist = info['uploader']
+                search_query = f"{artist} {title}".strip() if artist else title
+                return ytdl_search(search_query)
     except Exception as e:
-        print(f'Error al obtener track de Spotify: {e}')
-        return None
+        print(f'Error al obtener track de Spotify via yt-dlp: {e}')
+    return None
 
-def get_spotify_playlist(playlist_id):
-    """Obtiene todas las canciones de una playlist de Spotify"""
-    if not SPOTIFY_AVAILABLE:
-        return []
-    
+def get_spotify_playlist(spotify_url):
+    """
+    Obtiene todas las canciones de una playlist de Spotify usando yt-dlp
+    (sin necesidad de API ni suscripción Premium).
+    """
     try:
-        results = spotify.playlist_tracks(playlist_id)
-        tracks = []
-        
-        for item in results['items']:
-            track = item['track']
-            if track:
-                artist = track['artists'][0]['name']
-                title = track['name']
-                tracks.append({
-                    'artist': artist,
-                    'title': title,
-                    'search_query': f"{artist} {title}"
-                })
-        
-        return tracks
+        ydl_opts = {
+            **YDL_OPTIONS,
+            'extract_flat': True,
+            'noplaylist': False,
+            'quiet': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(spotify_url, download=False)
+            if not info or 'entries' not in info:
+                return []
+            tracks = []
+            for entry in info['entries']:
+                if entry:
+                    title = entry.get('title', '')
+                    artist = entry.get('uploader', entry.get('artist', ''))
+                    search_q = f"{artist} {title}".strip() if artist else title
+                    tracks.append({
+                        'artist': artist,
+                        'title': title,
+                        'search_query': search_q
+                    })
+            return tracks
     except Exception as e:
-        print(f'Error al obtener playlist de Spotify: {e}')
+        print(f'Error al obtener playlist de Spotify via yt-dlp: {e}')
         return []
 
-def get_spotify_album(album_id):
-    """Get all songs from a Spotify album"""
-    if not SPOTIFY_AVAILABLE:
-        return []
-    
-    try:
-        results = spotify.album_tracks(album_id)
-        album_info = spotify.album(album_id)
-        artist = album_info['artists'][0]['name']
-        tracks = []
-        
-        for track in results['items']:
-            title = track['name']
-            tracks.append({
-                'artist': artist,
-                'title': title,
-                'search_query': f"{artist} {title}"
-            })
-        
-        return tracks
-    except Exception as e:
-        print(f'Error getting Spotify album: {e}')
-        return []
+def get_spotify_album(spotify_url):
+    """
+    Obtiene todas las canciones de un álbum de Spotify usando yt-dlp
+    (sin necesidad de API ni suscripción Premium).
+    """
+    return get_spotify_playlist(spotify_url)  # Mismo mecanismo para álbumes
 
 def search_spotify_track(query):
-    """Search for a track on Spotify and return formatted search query"""
-    if not SPOTIFY_AVAILABLE:
-        return None
-    
-    try:
-        results = spotify.search(q=query, type='track', limit=1)
-        if results['tracks']['items']:
-            track = results['tracks']['items'][0]
-            artist = track['artists'][0]['name']
-            title = track['name']
-            # Return formatted query: "Artist - Title" for better YouTube search
-            return f"{artist} {title} official audio"
-        return None
-    except Exception as e:
-        print(f'Error searching Spotify: {e}')
-        return None
+    """Ya no se usa Spotify API para búsqueda. Devuelve None para forzar búsqueda en YouTube."""
+    return None
 
 async def search_song(query):
     """Busca una canción desde cualquier fuente"""
-    # Si es URL de Spotify
+    # Si es URL de Spotify, resolverla via yt-dlp
     if is_spotify_url(query):
-        if not SPOTIFY_AVAILABLE:
-            return None, 'Spotify no está configurado. Configura SPOTIFY_CLIENT_ID y SPOTIFY_CLIENT_SECRET'
-        
         tipo, spotify_id = extract_spotify_id(query)
-        
         if tipo == 'track':
-            return get_spotify_track(spotify_id), None
+            return get_spotify_track(query), None
         elif tipo == 'playlist':
             return None, 'playlist'
         elif tipo == 'album':
             return None, 'album'
-    
-    # Buscar en YouTube
+
+    # Buscar directamente en YouTube
     return ytdl_search(query), None

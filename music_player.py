@@ -51,20 +51,32 @@ class MusicPlayer:
                 # Local file - use direct path without streaming options
                 source = discord.FFmpegPCMAudio(song['url'])
             else:
-                # Online source - get fresh stream URL before playing
-                stream_url = None
-                
-                # Always get fresh URL using webpage_url
-                webpage_url = song.get('webpage_url') or song.get('url')
-                print(f'[DEBUG] Getting fresh URL for: {webpage_url}')
-                
-                try:
-                    loop = asyncio.get_event_loop()
-                    stream_url = await loop.run_in_executor(None, lambda: self._get_fresh_url(webpage_url))
-                    print(f'[DEBUG] Fresh URL obtained: {stream_url[:100] if stream_url else "None"}...')
-                except Exception as e:
-                    print(f'[ERROR] Error getting fresh URL: {e}')
-                
+                stream_url = song.get('url', '')
+                webpage_url = song.get('webpage_url', '')
+
+                # Si la URL es de la página de YouTube (no es stream directo)
+                # o si parece haber expirado, obtener URL fresca
+                needs_refresh = (
+                    not stream_url
+                    or 'youtube.com/watch' in stream_url
+                    or 'youtu.be/' in stream_url
+                    or 'googlevideo.com' not in stream_url  # No es URL de stream de Google
+                )
+
+                if needs_refresh and webpage_url:
+                    print(f'[DEBUG] Getting fresh URL for: {webpage_url}')
+                    try:
+                        loop = asyncio.get_event_loop()
+                        stream_url = await loop.run_in_executor(
+                            None, lambda: self._get_fresh_url(webpage_url)
+                        )
+                        print(f'[DEBUG] Fresh URL obtained: {stream_url[:80] if stream_url else "None"}...')
+                    except Exception as e:
+                        print(f'[ERROR] Error getting fresh URL: {e}')
+                        stream_url = None
+                else:
+                    print(f'[DEBUG] Using cached stream URL')
+
                 if not stream_url:
                     await self.channel.send('❌ Could not get stream URL')
                     await self.play_next()

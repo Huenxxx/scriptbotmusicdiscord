@@ -33,10 +33,7 @@ async def on_ready():
     print(f'📡 Conectado a {len(bot.guilds)} servidor(es)')
     if FFMPEG_PATH:
         print(f'✅ FFmpeg: {FFMPEG_PATH}')
-    if SPOTIFY_AVAILABLE:
-        print('✅ Spotify: Configurado')
-    else:
-        print('⚠️  Spotify: No configurado (opcional)')
+    print('✅ Spotify: Disponible vía yt-dlp (sin API)')
     print('=' * 60)
 
 # ==================== COMANDOS DE REPRODUCCIÓN ====================
@@ -49,50 +46,47 @@ async def play(ctx, *, query):
         return
 
     channel = ctx.author.voice.channel
-    
-    if ctx.voice_client is None:
-        voice_client = await channel.connect()
-    else:
-        voice_client = ctx.voice_client
-
-    if ctx.guild.id not in queues:
-        queues[ctx.guild.id] = MusicPlayer(ctx)
-        queues[ctx.guild.id].voice_client = voice_client
-
-    player = queues[ctx.guild.id]
-    player.voice_client = voice_client
-
     await ctx.send(f'🔍 Searching: **{query}**')
 
     loop = asyncio.get_event_loop()
-    
+
     try:
-        # Verificar si es una playlist o álbum de Spotify
+        # Verificar si es una playlist o álbum de Spotify (manejo especial)
         if is_spotify_url(query):
             tipo, spotify_id = extract_spotify_id(query)
-            
-            if tipo == 'playlist':
-                tracks = await loop.run_in_executor(None, lambda: get_spotify_playlist(spotify_id))
+
+            if tipo in ('playlist', 'album'):
+                # Conectar a voz primero para estas rutas
+                if ctx.voice_client is None:
+                    voice_client = await channel.connect()
+                else:
+                    voice_client = ctx.voice_client
+
+                if ctx.guild.id not in queues:
+                    queues[ctx.guild.id] = MusicPlayer(ctx)
+                queues[ctx.guild.id].voice_client = voice_client
+                player = queues[ctx.guild.id]
+                player.voice_client = voice_client
+
+                fetch_fn = get_spotify_playlist if tipo == 'playlist' else get_spotify_album
+                label = 'playlist' if tipo == 'playlist' else 'album'
+                tracks = await loop.run_in_executor(None, lambda: fetch_fn(query))
                 if tracks:
-                    await ctx.send(f'📋 Loading {len(tracks)} songs from Spotify playlist...')
-                    
-                    # Load first song immediately
+                    await ctx.send(f'{"📋" if tipo=="playlist" else "💿"} Loading {len(tracks)} songs from Spotify {label}...')
+
                     if tracks:
                         first_track = tracks[0]
                         first_data = await loop.run_in_executor(None, lambda: ytdl_search(first_track['search_query']))
                         if first_data:
                             player.queue.append(first_data)
-                            
-                            # Start playing immediately
                             if not voice_client.is_playing() and not voice_client.is_paused():
                                 await player.play_next()
-                            
                             await ctx.send(f'🎵 Playing first song, loading {len(tracks)-1} more in background...')
-                    
-                    # Load rest in background
+
                     async def load_remaining():
-                        added = 1  # Already added first song
-                        for track in tracks[1:50]:  # Skip first, limit to 50 total
+                        limit = 50 if tipo == 'playlist' else len(tracks)
+                        added = 1
+                        for track in tracks[1:limit]:
                             try:
                                 data = await loop.run_in_executor(None, lambda t=track: ytdl_search(t['search_query']))
                                 if data:
@@ -100,88 +94,65 @@ async def play(ctx, *, query):
                                     added += 1
                             except:
                                 continue
-                        await ctx.send(f'✅ Finished loading playlist: {added} songs added')
-                    
-                    # Run in background
+                        await ctx.send(f'✅ Finished loading {label}: {added} songs added')
+
                     asyncio.create_task(load_remaining())
-                    return
-            
-            elif tipo == 'album':
-                tracks = await loop.run_in_executor(None, lambda: get_spotify_album(spotify_id))
-                if tracks:
-                    await ctx.send(f'💿 Loading {len(tracks)} songs from album...')
-                    
-                    # Load first song immediately
-                    if tracks:
-                        first_track = tracks[0]
-                        first_data = await loop.run_in_executor(None, lambda: ytdl_search(first_track['search_query']))
-                        if first_data:
-                            player.queue.append(first_data)
-                            
-                            # Start playing immediately
-                            if not voice_client.is_playing() and not voice_client.is_paused():
-                                await player.play_next()
-                            
-                            await ctx.send(f'🎵 Playing first song, loading {len(tracks)-1} more in background...')
-                    
-                    # Load rest in background
-                    async def load_remaining():
-                        added = 1  # Already added first song
-                        for track in tracks[1:]:  # Skip first song
-                            try:
-                                data = await loop.run_in_executor(None, lambda t=track: ytdl_search(t['search_query']))
-                                if data:
-                                    player.queue.append(data)
-                                    added += 1
-                            except:
-                                continue
-                        await ctx.send(f'✅ Finished loading album: {added} songs added')
-                    
-                    # Run in background
-                    asyncio.create_task(load_remaining())
-                    return
-        
-        # Search for individual song
-        # Check if it's a direct URL
-        if 'youtube.com' in query or 'youtu.be' in query:
-            data = await loop.run_in_executor(None, lambda: ytdl_search(query, max_results=1))
+                return
+
+        # ── Canción individual ─────────────────────────────────────────────
+        # Búsqueda y conexión de voz en PARALELO para reducir latencia
+        async def connect_voice():
+            if ctx.voice_client is None:
+                return await channel.connect()
+            return ctx.voice_client
+
+        async def search_query_async():
+            # URL directa de YouTube
+            if 'youtube.com' in query or 'youtu.be' in query:
+                return await loop.run_in_executor(None, lambda: ytdl_search(query, max_results=1)), 'direct'
+            # URL de Spotify (track individual)
+            if is_spotify_url(query):
+                return await loop.run_in_executor(None, lambda: get_spotify_track(query)), 'spotify_track'
+            # Búsqueda por texto → múltiples resultados para elegir
+            results = await loop.run_in_executor(None, lambda: ytdl_search(query, max_results=5))
+            return results, 'search'
+
+        # Ejecutar en paralelo
+        (voice_client, (search_result, search_type)) = await asyncio.gather(
+            connect_voice(),
+            search_query_async(),
+        )
+
+        # Inicializar player
+        if ctx.guild.id not in queues:
+            queues[ctx.guild.id] = MusicPlayer(ctx)
+        player = queues[ctx.guild.id]
+        player.voice_client = voice_client
+
+        # ── Procesar resultado ─────────────────────────────────────────────
+        if search_type in ('direct', 'spotify_track'):
+            data = search_result
             if data:
                 player.queue.append(data)
                 if not voice_client.is_playing() and not voice_client.is_paused():
                     await player.play_next()
                 else:
-                    await ctx.send(f'➕ Added to queue: **{data["title"]}**')
+                    suffix = ' (via Spotify)' if search_type == 'spotify_track' else ''
+                    await ctx.send(f'➕ Added to queue: **{data["title"]}**{suffix}')
             else:
                 await ctx.send('❌ Song not found')
             return
-        
-        # Try Spotify first if available
-        if SPOTIFY_AVAILABLE:
-            spotify_result = await loop.run_in_executor(None, lambda: search_spotify_track(query))
-            if spotify_result:
-                # Found on Spotify, search on YouTube with artist + title
-                data = await loop.run_in_executor(None, lambda: ytdl_search(spotify_result, max_results=1))
-                if data:
-                    player.queue.append(data)
-                    if not voice_client.is_playing() and not voice_client.is_paused():
-                        await player.play_next()
-                    else:
-                        await ctx.send(f'➕ Added to queue: **{data["title"]}** (via Spotify)')
-                    return
-        
-        # Search with multiple results on YouTube
-        results = await loop.run_in_executor(None, lambda: ytdl_search(query, max_results=5))
-        
-        if not results or len(results) == 0:
+
+        # search_type == 'search'
+        results = search_result
+        if not results:
             await ctx.send('❌ No songs found')
             return
-        
-        # Check if we're confident about the first result
-        first_result = results[0]
+
+        first_result = results[0] if isinstance(results, list) else results
         from music_sources import is_confident_result
-        
+
         if is_confident_result(first_result, query):
-            # High confidence - play immediately
             player.queue.append(first_result)
             if not voice_client.is_playing() and not voice_client.is_paused():
                 await player.play_next()
@@ -190,24 +161,20 @@ async def play(ctx, *, query):
                 views_str = f" ({view_count:,} views)" if view_count > 0 else ""
                 await ctx.send(f'➕ Added to queue: **{first_result["title"]}**{views_str}')
             return
-        
-        # Low confidence or ambiguous - show options
+
+        # Resultados ambiguos → mostrar opciones
         message = '🎵 **Multiple results found** - Use `!select <number>` to choose:\n\n'
         for i, result in enumerate(results, 1):
             duration = result.get('duration', 0)
             duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "?"
-            
             view_count = result.get('view_count', 0)
             views_str = f" • {view_count // 1_000_000}M views" if view_count > 1_000_000 else ""
-            
-            channel = result.get('channel', '')
-            channel_str = f" • {channel}" if channel else ""
-            
+            ch = result.get('channel', '')
+            channel_str = f" • {ch}" if ch else ""
             message += f'**{i}.** {result["title"]} `[{duration_str}]`{views_str}{channel_str}\n'
-        
+
         message += f'\n💡 Type `!select <number>` or wait 30 seconds to auto-select #1'
-        
-        # Store search results for this user
+
         pending_searches[ctx.author.id] = {
             'results': results,
             'channel': ctx.channel,
@@ -215,11 +182,12 @@ async def play(ctx, *, query):
             'player': player,
             'timestamp': asyncio.get_event_loop().time()
         }
-        
+
         await ctx.send(message)
-    
+
     except Exception as e:
         await ctx.send(f'❌ Error: {str(e)}')
+
 
 @bot.command(name='select', aliases=['choose', 'pick'])
 async def select(ctx, number: int):
@@ -682,7 +650,7 @@ async def help_music(ctx):
 
 **Soporta:**
 ✅ YouTube (URLs y búsqueda)
-✅ Spotify (tracks, playlists, álbumes)
+✅ Spotify (tracks, playlists, álbumes) - sin API
 ✅ Playlists guardadas
     """
     await ctx.send(help_text)
