@@ -1,7 +1,5 @@
 discord.py[voice]
 yt-dlp
 PyNaCl
-python-dotenv
-spotipy
-wavelink>=3.4.0
-aiohttp>=3.9.0
+customtkinter
+darkdetect

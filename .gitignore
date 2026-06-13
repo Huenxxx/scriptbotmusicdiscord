@@ -28,6 +28,8 @@ env/
 
 # Environment Variables
 .env
+data.db
+data.db-journal
 
 # FFmpeg
 ffmpeg.exe

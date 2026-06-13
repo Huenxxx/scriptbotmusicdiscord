@@ -1,244 +1,67 @@
-# 🎵 Discord Music Bot
+# 🎨 ScriptBot Studio
 
-A feature-rich Discord music bot with support for YouTube, Spotify, and playlist management. Built with Python and discord.py.
+**ScriptBot Studio** es un gestor de escritorio interactivo y moderno desarrollado en Python para administrar múltiples bots de música de Discord. Todo esto sin dependencias externas como Java o servidores Lavalink.
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
-![Discord.py](https://img.shields.io/badge/discord.py-2.0+-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Huenxxx/scriptbotmusicdiscord/main/.gemini/antigravity/brain/802d8151-10d3-40a9-bf8e-66a76a3b4892/scriptbot_logo_1781316130725.png" alt="ScriptBot Studio Logo" width="200"/>
+</p>
 
-## ✨ Features
+---
 
-- 🎵 **YouTube Support** - Play music from YouTube (URLs and search)
-- 🧠 **Smart Search** - Intelligent search that plays popular songs instantly, shows options when ambiguous
-- 🎧 **Spotify Integration** - Play tracks, playlists, and albums from Spotify
-- 📁 **Local Music** - Play your own audio files from `own_songs` folder (all formats supported)
-- ⚡ **Instant Playback** - Albums/playlists start playing immediately
-- 💾 **Playlist Management** - Save and load custom playlists
-- 🔀 **Advanced Queue** - Shuffle, remove songs, and loop modes
-- 🎮 **Easy Controls** - Intuitive commands for playback control
-- 🏗️ **Modular Code** - Clean, organized, and easy to extend
+## ✨ Características Principales
 
-## 🚀 Quick Start
+*   **Autenticación Local (Login/Registro)**: Las credenciales y configuraciones de tus bots se almacenan cifradas en una base de datos local SQLite (`data.db`).
+*   **Gestor de Múltiples Bots (Dashboard)**: Añade, organiza y elimina múltiples bots indicando su Token de Discord, Prefijo y un Nombre personalizado.
+*   **Panel de Control de Música**:
+    *   **Búsqueda Rápida**: Escribe un nombre o pega un enlace de YouTube directamente en la GUI.
+    *   **Controles en Vivo**: Reproducir, Pausar/Reanudar, Saltar canción (Skip), Regular volumen y Detener la música (Stop).
+    *   **Cola de Reproducción**: Visualiza las canciones que están por reproducirse en tiempo real.
+    *   **Estado de Conexión**: Indicadores visuales en vivo del estado de conexión del bot (Online/Offline) y del canal de voz al que está conectado.
+*   **Consola de Logs Integrada**: Mira exactamente qué está haciendo tu bot en tiempo real a través del terminal incorporado.
+*   **Comandos de Chat de Discord**: El bot sigue respondiendo a comandos del chat de Discord (`!play`, `!skip`, `!pause`, `!resume`, `!volume`, `!queue`, `!stop`, `!leave`).
 
-### Prerequisites
+---
 
-- Python 3.8 or higher
-- FFmpeg installed on your system
-- Discord Bot Token
-- (Optional) Spotify API credentials
+## 🛠️ Instalación y Requisitos
 
-### Installation
+### Requisitos Previos
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/yourusername/discord-music-bot.git
-cd discord-music-bot
-```
+1.  **Python 3.8+**: Asegúrate de tener Python instalado y añadido al PATH de tu sistema.
+2.  **FFmpeg**: El programa requiere el binario de FFmpeg (`ffmpeg.exe`) para el procesamiento de audio. Por defecto, busca en la raíz del proyecto.
+3.  **Habilitar Message Content Intent**: Ve al [Discord Developer Portal](https://discord.com/developers/applications), selecciona tu aplicación, entra en **Bot** y en la sección **Privileged Gateway Intents** activa **Message Content Intent**, **Server Members Intent** y **Presence Intent**.
 
-2. **Install dependencies**
+### Instalación de Librerías
+
+Ejecuta el siguiente comando en tu terminal para instalar las dependencias:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-3. **Install FFmpeg**
+*(O de forma manual)*:
+
 ```bash
-python install_ffmpeg.py
+pip install discord.py[voice] yt-dlp PyNaCl customtkinter darkdetect
 ```
-Or install manually from [ffmpeg.org](https://ffmpeg.org/download.html)
-
-4. **Configure your bot**
-
-Edit `.env` file:
-```env
-DISCORD_TOKEN=your_discord_token_here
-
-# Optional: For Spotify support
-SPOTIFY_CLIENT_ID=your_spotify_client_id
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
-```
-
-5. **Run the bot**
-```bash
-python bot.py
-```
-
-## 🎮 Commands
-
-### Playback
-- `!play <song/url>` - Play music from YouTube or Spotify
-- `!skip` or `!s` - Skip current song
-- `!pause` - Pause playback
-- `!resume` or `!r` - Resume playback
-- `!stop` - Stop and clear queue
-- `!leave` or `!dc` - Disconnect from voice channel
-
-### Queue Management
-- `!queue` or `!q` - Show current queue
-- `!shuffle` or `!mix` - Shuffle the queue
-- `!remove <number>` - Remove specific song from queue
-- `!clear` - Clear the entire queue
-- `!loop [song/queue/off]` - Toggle loop mode
-
-### Playlists
-- `!playlist_save <name>` - Save current queue as playlist
-- `!playlist_load <name>` - Load a saved playlist
-- `!playlist_list` - List all saved playlists
-- `!playlist_delete <name>` - Delete a playlist
-
-### Help
-- `!help_music` - Show all available commands
-
-## 📝 Usage Examples
-
-### Smart Search
-```
-# Popular songs play instantly
-!play despacito
-# Plays immediately (5B views)
-
-# Ambiguous searches show options
-!play believer
-# Shows Imagine Dragons, Ozzy Osbourne, etc.
-!select 1
-# Plays your choice
-```
-
-### Play from YouTube
-```
-!play never gonna give you up
-!play https://www.youtube.com/watch?v=dQw4w9WgXcQ
-```
-
-### Play from Spotify
-```
-!play https://open.spotify.com/track/3n3Ppam7vgaVa1iaRUc9Lp
-!play https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
-```
-
-### Play Local Files
-```
-# Add files to own_songs/ folder
-!ownplay              # List all local songs
-!ownplay my_song      # Play by name
-!ownplay 1            # Play by number
-```
-
-### Create and Use Playlists
-```
-!play song 1
-!play song 2
-!play song 3
-!playlist_save my_favorites
-!playlist_load my_favorites
-!shuffle
-!loop queue
-```
-
-## 🔧 Configuration
-
-### Discord Bot Setup
-
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create a new application
-3. Go to "Bot" section and create a bot
-4. Copy the token
-5. Enable these intents:
-   - MESSAGE CONTENT INTENT ✅
-   - SERVER MEMBERS INTENT ✅
-6. Invite bot to your server:
-   - OAuth2 > URL Generator
-   - Scopes: `bot`
-   - Permissions: `Connect`, `Speak`, `Send Messages`, `Use Voice Activity`
-
-### Spotify Setup (Optional)
-
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create an app
-3. Copy Client ID and Client Secret
-4. Add them to `.env` file
-
-**Note:** The bot works perfectly with YouTube only. Spotify is optional.
-
-## 📁 Project Structure
-
-```
-discord-music-bot/
-├── 🤖 Core Files
-│   ├── bot.py                  # Main bot application
-│   ├── config.py               # Configuration
-│   ├── music_player.py         # Playback logic
-│   ├── music_sources.py        # YouTube/Spotify integration
-│   └── playlist_manager.py     # Playlist management
-│
-├── 📚 Documentation
-│   ├── README.md               # This file
-│   ├── CHANGELOG.md            # Version history
-│   ├── CONTRIBUTING.md         # Contribution guide
-│   └── docs/                   # Detailed guides
-│       ├── SETUP.md
-│       ├── COMMANDS.md
-│       ├── EXAMPLES.md
-│       └── FAQ.md
-│
-├── ⚙️ Configuration
-│   ├── .env                    # Your tokens (create this)
-│   ├── .env.example            # Template
-│   ├── requirements.txt        # Dependencies
-│   └── .gitignore             # Git ignore rules
-│
-└── 🛠️ Utilities
-    ├── install_ffmpeg.py       # FFmpeg installer
-    ├── start_bot.bat           # Quick start (Windows)
-    └── playlists/              # Saved playlists
-```
-
-## 🛠️ Technologies
-
-- **discord.py** - Discord API wrapper
-- **yt-dlp** - YouTube audio extraction
-- **spotipy** - Spotify API wrapper
-- **FFmpeg** - Audio processing
-- **PyNaCl** - Voice encoding
-
-## 🐛 Troubleshooting
-
-### Bot doesn't respond
-- Verify MESSAGE CONTENT INTENT is enabled in Discord Developer Portal
-- Check bot has proper permissions in your server
-
-### FFmpeg not found
-- Run `python install_ffmpeg.py`
-- Or install manually and add to system PATH
-
-### Spotify not working
-- Verify credentials in `.env`
-- Install spotipy: `pip install spotipy`
-- Spotify is optional, YouTube always works
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to:
-- Report bugs
-- Suggest new features
-- Submit pull requests
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [discord.py](https://github.com/Rapptz/discord.py)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- [spotipy](https://github.com/plamere/spotipy)
-
-## 📞 Support
-
-If you need help:
-1. Check the [documentation](docs/)
-2. Open an issue on GitHub
-3. Read the troubleshooting section
 
 ---
 
-Made with ❤️ for Discord music lovers
+## 🚀 Cómo Iniciar el Programa
+
+Para abrir la interfaz gráfica de **ScriptBot Studio**, simplemente ejecuta el archivo `main.py`:
+
+```bash
+python main.py
+```
+
+1.  **Registra una cuenta local** en la pantalla inicial.
+2.  **Inicia sesión** con las credenciales que creaste.
+3.  Registra un nuevo bot ingresando su **Token de Discord** y un **Nombre**.
+4.  Haz clic en **Gestionar** en el bot que desees y luego pulsa **Iniciar Bot**.
+5.  ¡Listo! Ya puedes poner música escribiendo en el buscador de la GUI o mediante los comandos en Discord.
+
+---
+
+## 🛡️ Seguridad
+
+Tus credenciales de usuario locales se cifran usando PBKDF2 con salting (HMAC-SHA256). La base de datos local `data.db` está configurada en `.gitignore` para asegurar que tus tokens de Discord nunca se suban a un repositorio público de GitHub por accidente.
