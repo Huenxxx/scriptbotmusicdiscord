@@ -222,7 +222,7 @@ class ScriptBotStudioApp(ctk.CTk):
         # Enlace a registro
         register_link = ctk.CTkLabel(login_frame, text="¿No tienes cuenta? Regístrate aquí", font=ctk.CTkFont(family="Segoe UI", size=12, underline=True), text_color="#94a3b8", cursor="hand2")
         register_link.pack(pady=8)
-        register_link.bind("<Button-1>", lambda e: self.show_register())
+        register_link.bind("<Button-1>", lambda e: self.switch_screen_with_fade(self.show_register))
         
         # Intentar cargar credenciales recordadas
         saved_user, saved_pw = self.load_remember_credentials()
@@ -259,7 +259,7 @@ class ScriptBotStudioApp(ctk.CTk):
         
         login_link = ctk.CTkLabel(register_frame, text="¿Ya tienes cuenta? Inicia sesión", font=ctk.CTkFont(family="Segoe UI", size=12, underline=True), text_color="#94a3b8", cursor="hand2")
         login_link.pack(pady=10)
-        login_link.bind("<Button-1>", lambda e: self.show_login())
+        login_link.bind("<Button-1>", lambda e: self.switch_screen_with_fade(self.show_login))
 
     def handle_login(self):
         username = self.username_entry.get().strip()
@@ -280,7 +280,7 @@ class ScriptBotStudioApp(ctk.CTk):
                     except Exception:
                         pass
                         
-            self.show_dashboard()
+            self.switch_screen_with_fade(self.show_dashboard)
         else:
             messagebox.showerror("Error de acceso", "Usuario o contraseña incorrectos.")
 
@@ -300,7 +300,7 @@ class ScriptBotStudioApp(ctk.CTk):
         success, message = database.register_user(username, password)
         if success:
             messagebox.showinfo("Éxito", message)
-            self.show_login()
+            self.switch_screen_with_fade(self.show_login)
         else:
             messagebox.showerror("Error", message)
 
@@ -434,14 +434,14 @@ class ScriptBotStudioApp(ctk.CTk):
 
     def select_bot(self, bot_data):
         self.active_bot_data = bot_data
-        self.show_bot_controls()
+        self.switch_screen_with_fade(self.show_bot_controls)
 
     def handle_logout(self):
         self.on_closing_bot() 
         self.current_user_id = None
         self.current_username = None
         self.active_bot_data = None
-        self.show_login()
+        self.switch_screen_with_fade(self.show_login)
 
     # --- PANEL DE CONTROL DEL BOT (MUSICA & LOGS & LETRAS) ---
 
@@ -699,12 +699,15 @@ class ScriptBotStudioApp(ctk.CTk):
         )
         self.log_textbox.pack(fill="both", expand=True, padx=10, pady=10)
         self.log_textbox.configure(state="disabled")
+        
+        # Sincronizar inmediatamente la interfaz con el estado actual del bot al abrir el panel
+        self.update_bot_ui_state()
 
     def go_to_dashboard(self):
         if self.bridge.status in ["online", "connecting"]:
             if not messagebox.askyesno("Confirmar", "El bot sigue ejecutándose en segundo plano. ¿Volver al Dashboard?"):
                 return
-        self.show_dashboard()
+        self.switch_screen_with_fade(self.show_dashboard)
 
     def toggle_bot_power(self):
         if self.bridge.status == "offline":
@@ -1015,6 +1018,31 @@ class ScriptBotStudioApp(ctk.CTk):
             self.lyrics_textbox.delete("1.0", "end")
             self.lyrics_textbox.insert("1.0", f"🔍 Buscando letras en LRCLIB...\n\nOpción {idx}: {q_str}")
             self.lyrics_textbox.configure(state="disabled")
+
+    def switch_screen_with_fade(self, show_screen_callback):
+        """Cambia de pantalla realizando un desvanecimiento (fade-out/fade-in) de la opacidad de la ventana."""
+        steps = 5
+        delay = 15  # 75ms fade-out + 75ms fade-in = 150ms de transición rápida y fluida
+        
+        def fade_out(step):
+            if step <= steps:
+                alpha = 1.0 - (step / steps) * 0.9  # baja hasta 0.1 de opacidad
+                self.attributes("-alpha", alpha)
+                self.after(delay, lambda: fade_out(step + 1))
+            else:
+                # Cambiar de pantalla y reconstruir los widgets
+                show_screen_callback()
+                fade_in(1)
+                
+        def fade_in(step):
+            if step <= steps:
+                alpha = 0.1 + (step / steps) * 0.9  # sube hasta 1.0
+                self.attributes("-alpha", alpha)
+                self.after(delay, lambda: fade_in(step + 1))
+            else:
+                self.attributes("-alpha", 1.0)
+                
+        fade_out(1)
 
     # --- ACCIONES DE MUSICA DESDE LA GUI ---
 
