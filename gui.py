@@ -553,29 +553,69 @@ class ScriptBotStudioApp(ctk.CTk):
         self.vol_slider.pack(side="left", fill="x", expand=True, padx=10)
         
         # --- 2. CONFIGURACIÓN PESTAÑA: LETRAS ---
-        self.lyrics_header = ctk.CTkFrame(self.tab_lyrics, fg_color="transparent")
-        self.lyrics_header.pack(fill="x", padx=10, pady=(10, 5))
+        self.show_full_lyrics = False
         
-        self.current_lyrics_line_lbl = ctk.CTkLabel(
-            self.lyrics_header,
-            text="🎶 Letra no disponible",
-            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
-            text_color="#a5b4fc",
+        self.lyrics_container = ctk.CTkFrame(self.tab_lyrics, fg_color="transparent")
+        self.lyrics_container.pack(fill="both", expand=True)
+        
+        # Vista de Enfoque (Apple Music Style) - El Protagonista
+        self.lyrics_focus_frame = ctk.CTkFrame(self.lyrics_container, fg_color="transparent")
+        self.lyrics_focus_frame.pack(fill="both", expand=True, pady=40)
+        
+        # Línea anterior (atenuada)
+        self.lyr_prev_lbl = ctk.CTkLabel(
+            self.lyrics_focus_frame,
+            text="",
+            font=ctk.CTkFont(family="Segoe UI", size=14),
+            text_color="#475569",
             wraplength=650
         )
-        self.current_lyrics_line_lbl.pack(fill="x", pady=5)
+        self.lyr_prev_lbl.pack(pady=10)
         
+        # Línea activa (Protagonista en grande y color violeta/blanco)
+        self.lyr_curr_lbl = ctk.CTkLabel(
+            self.lyrics_focus_frame,
+            text="Ninguna canción reproduciéndose",
+            font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
+            text_color="#a5b4fc",
+            wraplength=750
+        )
+        self.lyr_curr_lbl.pack(pady=20)
+        
+        # Línea siguiente (atenuada)
+        self.lyr_next_lbl = ctk.CTkLabel(
+            self.lyrics_focus_frame,
+            text="",
+            font=ctk.CTkFont(family="Segoe UI", size=14),
+            text_color="#475569",
+            wraplength=650
+        )
+        self.lyr_next_lbl.pack(pady=10)
+        
+        # Caja de texto para la letra completa (oculta al inicio)
         self.lyrics_textbox = ctk.CTkTextbox(
-            self.tab_lyrics,
+            self.lyrics_container,
             fg_color="#090d16",
             font=ctk.CTkFont(family="Segoe UI", size=13),
             text_color="#e2e8f0",
             border_color="#1e293b",
             border_width=1
         )
-        self.lyrics_textbox.pack(fill="both", expand=True, padx=10, pady=(5, 10))
         self.lyrics_textbox.insert("1.0", "No se está reproduciendo ninguna canción.")
         self.lyrics_textbox.configure(state="disabled")
+        
+        # Botón para cambiar de modo
+        self.toggle_lyrics_btn = ctk.CTkButton(
+            self.lyrics_container,
+            text="👁 Ver Letra Completa",
+            width=140,
+            height=28,
+            fg_color="#1c283d",
+            hover_color="#24344f",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            command=self.toggle_lyrics_view
+        )
+        self.toggle_lyrics_btn.pack(side="bottom", pady=10)
         
         # --- 3. CONFIGURACIÓN PESTAÑA: COLA ---
         self.scrollable_queue = ctk.CTkScrollableFrame(self.tab_queue, fg_color="#090d16", border_color="#1e293b")
@@ -712,12 +752,22 @@ class ScriptBotStudioApp(ctk.CTk):
         self.lyrics_textbox.delete("1.0", "end")
         self.current_song_lrc = []
         
+        # Resetear etiquetas de la vista de enfoque
+        if hasattr(self, "lyr_prev_lbl") and self.lyr_prev_lbl.winfo_exists():
+            self.lyr_prev_lbl.configure(text="")
+        if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
+            self.lyr_curr_lbl.configure(text="No se encontraron letras para esta canción.")
+        if hasattr(self, "lyr_next_lbl") and self.lyr_next_lbl.winfo_exists():
+            self.lyr_next_lbl.configure(text="")
+            
         if lyrics_data:
             plain = lyrics_data.get('lyrics', '')
             synced = lyrics_data.get('synced', '')
             
             if plain:
                 self.lyrics_textbox.insert("end", plain)
+                if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
+                    self.lyr_curr_lbl.configure(text="(Letra plana disponible. Usa 'Ver Letra Completa')")
             elif synced:
                 import re
                 clean_plain = re.sub(r'\[\d+:\d+(?:\.\d+)?\]', '', synced).strip()
@@ -725,12 +775,27 @@ class ScriptBotStudioApp(ctk.CTk):
                 
             if synced:
                 self.current_song_lrc = self.parse_lrc(synced)
+                if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
+                    self.lyr_curr_lbl.configure(text="🎶 (Instrumental / Intro)")
         else:
             self.lyrics_textbox.insert("end", "No se encontraron letras para esta canción.")
-            if hasattr(self, "current_lyrics_line_lbl") and self.current_lyrics_line_lbl.winfo_exists():
-                self.current_lyrics_line_lbl.configure(text="🎶 Letra no disponible")
-                
+            
         self.lyrics_textbox.configure(state="disabled")
+
+    def toggle_lyrics_view(self):
+        """Alterna entre la vista de letra de enfoque (Karaoke) y la letra completa."""
+        if not hasattr(self, "lyrics_focus_frame") or not self.lyrics_focus_frame.winfo_exists():
+            return
+            
+        self.show_full_lyrics = not self.show_full_lyrics
+        if self.show_full_lyrics:
+            self.lyrics_focus_frame.pack_forget()
+            self.lyrics_textbox.pack(fill="both", expand=True, padx=10, pady=(10, 5))
+            self.toggle_lyrics_btn.configure(text="✨ Ver Modo Enfoque")
+        else:
+            self.lyrics_textbox.pack_forget()
+            self.lyrics_focus_frame.pack(fill="both", expand=True, pady=40)
+            self.toggle_lyrics_btn.configure(text="👁 Ver Letra Completa")
 
     # --- ACCIONES DE MUSICA DESDE LA GUI ---
 
@@ -792,21 +857,35 @@ class ScriptBotStudioApp(ctk.CTk):
             self.bridge.state_updated = False
             self.update_bot_ui_state()
             
-        # Actualizar la línea de Karaoke sincronizada en tiempo real
+        # Actualizar las líneas de Karaoke (previo, activo, siguiente) en la vista de enfoque
         if self.bridge.status == "online" and self.bridge.bot and self.current_song_lrc:
             elapsed = self.bridge.bot.get_elapsed_time()
-            current_line = ""
-            for ts, text in self.current_song_lrc:
+            
+            active_idx = -1
+            for idx, (ts, text) in enumerate(self.current_song_lrc):
                 if ts <= elapsed:
-                    current_line = text
+                    active_idx = idx
                 else:
                     break
+                    
+            prev_line = ""
+            curr_line = "🎶 (Instrumental / Intro)"
+            next_line = ""
             
-            if hasattr(self, "current_lyrics_line_lbl") and self.current_lyrics_line_lbl.winfo_exists():
-                if current_line:
-                    self.current_lyrics_line_lbl.configure(text=f"🎶 {current_line}")
-                else:
-                    self.current_lyrics_line_lbl.configure(text="🎶 (Instrumental / Intro)")
+            if active_idx != -1:
+                curr_line = self.current_song_lrc[active_idx][1]
+                if active_idx > 0:
+                    prev_line = self.current_song_lrc[active_idx - 1][1]
+                if active_idx < len(self.current_song_lrc) - 1:
+                    next_line = self.current_song_lrc[active_idx + 1][1]
+            else:
+                if self.current_song_lrc:
+                    next_line = self.current_song_lrc[0][1]
+                    
+            if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
+                self.lyr_prev_lbl.configure(text=prev_line)
+                self.lyr_curr_lbl.configure(text=curr_line)
+                self.lyr_next_lbl.configure(text=next_line)
             
         self.after(100, self.poll_bot_updates)
 
@@ -843,8 +922,10 @@ class ScriptBotStudioApp(ctk.CTk):
                 self.lyrics_textbox.delete("1.0", "end")
                 self.lyrics_textbox.insert("1.0", "No se está reproduciendo ninguna canción.")
                 self.lyrics_textbox.configure(state="disabled")
-            if hasattr(self, "current_lyrics_line_lbl") and self.current_lyrics_line_lbl.winfo_exists():
-                self.current_lyrics_line_lbl.configure(text="🎶 Letra no disponible")
+            if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
+                self.lyr_prev_lbl.configure(text="")
+                self.lyr_curr_lbl.configure(text="Ninguna canción reproduciéndose")
+                self.lyr_next_lbl.configure(text="")
             self.current_song_lrc = []
             self.last_song_title = None
             return
@@ -880,8 +961,10 @@ class ScriptBotStudioApp(ctk.CTk):
                 self.lyrics_textbox.delete("1.0", "end")
                 self.lyrics_textbox.insert("1.0", "No se está reproduciendo ninguna canción.")
                 self.lyrics_textbox.configure(state="disabled")
-            if hasattr(self, "current_lyrics_line_lbl") and self.current_lyrics_line_lbl.winfo_exists():
-                self.current_lyrics_line_lbl.configure(text="🎶 Letra no disponible")
+            if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
+                self.lyr_prev_lbl.configure(text="")
+                self.lyr_curr_lbl.configure(text="Ninguna canción reproduciéndose")
+                self.lyr_next_lbl.configure(text="")
             self.current_song_lrc = []
             self.last_song_title = None
             
