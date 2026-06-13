@@ -62,6 +62,37 @@ python main.py
 
 ---
 
+## 📦 Compilación y Releases Automáticas (CI/CD)
+
+### Compilación Local (Windows)
+Si deseas compilar la aplicación de forma manual en tu máquina local:
+1. Instala las herramientas necesarias (`PyInstaller` e `Inno Setup`).
+2. Ejecuta el script de compilación automatizado:
+   ```bash
+   python build.py
+   ```
+Esto generará la versión portable (`ScriptBot_Studio_Portable.zip`) y el instalador (`ScriptBot_Studio_Setup.exe`) dentro de la carpeta `dist/`.
+
+### Lanzamiento Automático vía GitHub (Windows & Linux)
+Hemos integrado un flujo de trabajo automatizado con **GitHub Actions** (`.github/workflows/release.yml`) que compila la aplicación para Windows y Linux simultáneamente en la nube.
+
+Para crear una nueva versión y publicarla automáticamente en las Releases de tu repositorio:
+1. Crea una etiqueta (tag) de versión en tu consola de Git (ej. `v1.0.0`):
+   ```bash
+   git tag v1.0.0
+   ```
+2. Sube la etiqueta a GitHub:
+   ```bash
+   git push origin v1.0.0
+   ```
+3. GitHub Actions detectará la etiqueta y compilará automáticamente las siguientes variantes que se adjuntarán a la sección de **Releases** de tu repositorio:
+   * **Windows Portable**: `ScriptBot_Studio_Windows_Portable.zip`
+   * **Windows Installer**: `ScriptBot_Studio_Windows_Setup.exe`
+   * **Linux Portable**: `ScriptBot_Studio_Linux_Portable.tar.gz`
+   * **Linux Installer**: `ScriptBot_Studio_Linux_Installer.tar.gz` (incluye instalador rápido `install.sh`)
+
+---
+
 ## 🛡️ Seguridad
 
 Tus credenciales de usuario locales se cifran usando PBKDF2 con salting (HMAC-SHA256). La base de datos local `data.db` está configurada en `.gitignore` para asegurar que tus tokens de Discord nunca se suban a un repositorio público de GitHub por accidente.
