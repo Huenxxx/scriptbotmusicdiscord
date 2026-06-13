@@ -1,166 +1,211 @@
-import sqlite3
-import hashlib
 import os
 import sys
+import json
+import requests
 
+# Ruta del archivo de configuración de Firebase en el directorio de la aplicación
 def get_app_dir():
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     else:
         return os.path.dirname(os.path.abspath(__file__))
 
-DB_FILE = os.path.join(get_app_dir(), "data.db")
+CONFIG_FILE = os.path.join(get_app_dir(), "firebase_config.json")
+FIREBASE_CONFIG = None
+CURRENT_ID_TOKEN = None
 
-def get_connection():
-    """Retorna una conexion a la base de datos local con soporte de claves foraneas."""
-    conn = sqlite3.connect(DB_FILE)
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+def load_firebase_config():
+    global FIREBASE_CONFIG
+    if FIREBASE_CONFIG is not None:
+        return FIREBASE_CONFIG
+        
+    if not os.path.exists(CONFIG_FILE):
+        # Crear plantilla de configuración por defecto
+        template = {
+            "apiKey": "TU_FIREBASE_API_KEY",
+            "projectId": "TU_PROJECT_ID",
+            "databaseUrl": "https://TU_PROJECT_ID-default-rtdb.firebaseio.com"
+        }
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(template, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"Error al crear plantilla de Firebase: {e}")
+        FIREBASE_CONFIG = template
+        return template
+        
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            FIREBASE_CONFIG = json.load(f)
+            return FIREBASE_CONFIG
+    except Exception as e:
+        print(f"Error al cargar firebase_config.json: {e}")
+        return None
+
+def is_config_placeholder(config):
+    if not config:
+        return True
+    return (config.get("apiKey") == "TU_FIREBASE_API_KEY" or 
+            config.get("projectId") == "TU_PROJECT_ID")
 
 def init_db():
-    """Inicializa la base de datos creando las tablas necesarias si no existen."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Crear tabla de usuarios
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        salt TEXT NOT NULL
-    );
-    """)
-    
-    # Crear tabla de bots asociados a usuarios
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS bots (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        token TEXT NOT NULL,
-        prefix TEXT NOT NULL DEFAULT '!',
-        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    """)
-    
-    conn.commit()
-    conn.close()
-
-def hash_password(password, salt=None):
-    """Genera un hash seguro para la contrasena usando PBKDF2-HMAC-SHA256."""
-    if salt is None:
-        salt = os.urandom(16)
-    else:
-        if isinstance(salt, str):
-            salt = bytes.fromhex(salt)
-            
-    key = hashlib.pbkdf2_hmac(
-        'sha256',
-        password.encode('utf-8'),
-        salt,
-        100000 # Numero de iteraciones
-    )
-    return key.hex(), salt.hex()
+    """Inicializa Firebase cargando o creando la plantilla de configuración."""
+    load_firebase_config()
 
 def register_user(username, password):
-    """Registra un nuevo usuario con contrasena cifrada. Retorna (exito, mensaje)."""
+    """Registra un nuevo usuario en Firebase Auth. Retorna (exito, mensaje)."""
     username = username.strip().lower()
     if not username or not password:
         return False, "El usuario y la contraseña no pueden estar vacíos."
         
-    conn = get_connection()
-    cursor = conn.cursor()
+    config = load_firebase_config()
+    if is_config_placeholder(config):
+        return False, "Firebase no está configurado. Edita 'firebase_config.json' con tus credenciales."
+        
+    api_key = config.get("apiKey")
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={api_key}"
+    
+    # Firebase Auth requiere un email válido, por lo que creamos uno sintáctico
+    email = f"{username}@scriptbot.local"
+    payload = {
+        "email": email,
+        "password": password,
+        "returnSecureToken": True
+    }
     
     try:
-        password_hash, salt = hash_password(password)
-        cursor.execute(
-            "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
-            (username, password_hash, salt)
-        )
-        conn.commit()
-        return True, "Registro completado con éxito."
-    except sqlite3.IntegrityError:
-        return False, "El nombre de usuario ya está registrado."
+        res = requests.post(url, json=payload, timeout=10)
+        res_data = res.json()
+        if res.status_code == 200:
+            return True, "Registro completado con éxito."
+        else:
+            error_msg = res_data.get("error", {}).get("message", "Error desconocido")
+            if error_msg == "EMAIL_EXISTS":
+                return False, "El nombre de usuario ya está registrado."
+            elif "WEAK_PASSWORD" in error_msg:
+                return False, "La contraseña debe tener al menos 6 caracteres."
+            elif "INVALID_EMAIL" in error_msg:
+                return False, "El nombre de usuario contiene caracteres no válidos para Firebase."
+            return False, f"Error de Firebase: {error_msg}"
     except Exception as e:
-        return False, f"Error al registrar: {str(e)}"
-    finally:
-        conn.close()
+        return False, f"Error de conexión: {str(e)}"
 
 def login_user(username, password):
-    """Verifica las credenciales del usuario. Retorna el ID del usuario si es correcto, None si no."""
+    """Autentica al usuario en Firebase Auth. Retorna el UID del usuario si es correcto, None si no."""
+    global CURRENT_ID_TOKEN
     username = username.strip().lower()
     if not username or not password:
         return None
         
-    conn = get_connection()
-    cursor = conn.cursor()
+    config = load_firebase_config()
+    if is_config_placeholder(config):
+        return None
+        
+    api_key = config.get("apiKey")
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}"
     
-    cursor.execute("SELECT id, password_hash, salt FROM users WHERE username = ?", (username,))
-    row = cursor.fetchone()
-    conn.close()
+    email = f"{username}@scriptbot.local"
+    payload = {
+        "email": email,
+        "password": password,
+        "returnSecureToken": True
+    }
     
-    if row:
-        user_id, stored_hash, salt = row
-        test_hash, _ = hash_password(password, salt)
-        if test_hash == stored_hash:
-            return user_id
-            
-    return None
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        res_data = res.json()
+        if res.status_code == 200:
+            CURRENT_ID_TOKEN = res_data.get("idToken")
+            return res_data.get("localId") # Retorna el UID único de Firebase
+        else:
+            return None
+    except Exception:
+        return None
 
 def add_bot(user_id, name, token, prefix="!"):
-    """Anade un bot para un usuario. Retorna (exito, mensaje)."""
+    """Añade un bot asociado al UID del usuario en Firebase Realtime Database. Retorna (exito, mensaje)."""
     name = name.strip()
     token = token.strip()
-    prefix = prefix.strip()
+    prefix = prefix.strip() or "!"
     
     if not name or not token:
         return False, "El nombre y el token del bot son obligatorios."
         
-    conn = get_connection()
-    cursor = conn.cursor()
+    config = load_firebase_config()
+    if is_config_placeholder(config):
+        return False, "Firebase no está configurado de manera válida."
+        
+    db_url = config.get("databaseUrl").rstrip("/")
+    url = f"{db_url}/users/{user_id}/bots.json"
+    
+    params = {}
+    if CURRENT_ID_TOKEN:
+        params["auth"] = CURRENT_ID_TOKEN
+        
+    payload = {
+        "name": name,
+        "token": token,
+        "prefix": prefix
+    }
     
     try:
-        cursor.execute(
-            "INSERT INTO bots (user_id, name, token, prefix) VALUES (?, ?, ?, ?)",
-            (user_id, name, token, prefix)
-        )
-        conn.commit()
-        return True, "Bot añadido correctamente."
+        res = requests.post(url, json=payload, params=params, timeout=10)
+        if res.status_code == 200:
+            return True, "Bot añadido correctamente."
+        else:
+            return False, f"Error de Firebase: {res.text}"
     except Exception as e:
-        return False, f"Error al guardar el bot: {str(e)}"
-    finally:
-        conn.close()
+        return False, f"Error de conexión: {str(e)}"
 
 def get_bots(user_id):
-    """Retorna una lista de diccionarios con los bots asociados al usuario."""
-    conn = get_connection()
-    cursor = conn.cursor()
+    """Obtiene todos los bots asociados al UID del usuario desde Firebase Realtime Database."""
+    config = load_firebase_config()
+    if is_config_placeholder(config):
+        return []
+        
+    db_url = config.get("databaseUrl").rstrip("/")
+    url = f"{db_url}/users/{user_id}/bots.json"
     
-    cursor.execute("SELECT id, name, token, prefix FROM bots WHERE user_id = ?", (user_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    
-    bots = []
-    for row in rows:
-        bots.append({
-            "id": row[0],
-            "name": row[1],
-            "token": row[2],
-            "prefix": row[3]
-        })
-    return bots
+    params = {}
+    if CURRENT_ID_TOKEN:
+        params["auth"] = CURRENT_ID_TOKEN
+        
+    try:
+        res = requests.get(url, params=params, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            if not data:
+                return []
+                
+            bots = []
+            for bot_key, bot_data in data.items():
+                bots.append({
+                    "id": bot_key, # El push ID generado por Firebase sirve como ID de bot
+                    "name": bot_data.get("name"),
+                    "token": bot_data.get("token"),
+                    "prefix": bot_data.get("prefix", "!")
+                })
+            return bots
+        else:
+            return []
+    except Exception:
+        return []
 
 def delete_bot(bot_id, user_id):
-    """Elimina un bot si pertenece al usuario especificado."""
-    conn = get_connection()
-    cursor = conn.cursor()
+    """Elimina un bot específico del usuario de Firebase Realtime Database."""
+    config = load_firebase_config()
+    if is_config_placeholder(config):
+        return False
+        
+    db_url = config.get("databaseUrl").rstrip("/")
+    url = f"{db_url}/users/{user_id}/bots/{bot_id}.json"
     
+    params = {}
+    if CURRENT_ID_TOKEN:
+        params["auth"] = CURRENT_ID_TOKEN
+        
     try:
-        cursor.execute("DELETE FROM bots WHERE id = ? AND user_id = ?", (bot_id, user_id))
-        conn.commit()
-        return True
+        res = requests.delete(url, params=params, timeout=10)
+        return res.status_code == 200
     except Exception:
         return False
-    finally:
-        conn.close()

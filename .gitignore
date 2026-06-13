@@ -32,6 +32,7 @@ data.db
 data.db-journal
 remember.json
 settings.json
+firebase_config.json
 
 # FFmpeg
 ffmpeg.exe
