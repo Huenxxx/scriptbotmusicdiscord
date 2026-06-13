@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 import yt_dlp
 import os
+import sys
 import logging
 import struct
 import math
@@ -188,10 +189,20 @@ class DiscordMusicBot(commands.Bot):
         self.bridge.update_queue([t['title'] for t in self.queue])
         self.bridge.update_current_song(self.current_track)
         
-        ffmpeg_path = os.path.abspath("ffmpeg.exe")
-        if not os.path.exists(ffmpeg_path):
-            # Fallback al path global si no está en la raíz
-            ffmpeg_path = "ffmpeg"
+        # Buscar ffmpeg.exe de manera robusta
+        ffmpeg_candidates = [
+            os.path.abspath("ffmpeg.exe"),
+            os.path.join(os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__)), "ffmpeg.exe"),
+            os.path.join(os.path.abspath("."), "ffmpeg.exe")
+        ]
+        if hasattr(sys, "_MEIPASS"):
+            ffmpeg_candidates.insert(0, os.path.join(sys._MEIPASS, "ffmpeg.exe"))
+            
+        ffmpeg_path = "ffmpeg"
+        for candidate in ffmpeg_candidates:
+            if os.path.exists(candidate):
+                ffmpeg_path = candidate
+                break
             
         self.log(f"▶️ Reproduciendo ahora: {self.current_track['title']}")
         

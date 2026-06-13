@@ -1,4 +1,11 @@
 import os
+import sys
+
+def get_app_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
 import queue
 import asyncio
 import threading
@@ -71,6 +78,63 @@ class BotBridge:
         self.volume = volume
         self.state_updated = True
 
+class CTkConfirmDialog(ctk.CTkToplevel):
+    def __init__(self, parent, title, message):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("380x180")
+        self.resizable(False, False)
+        self.configure(fg_color="#131d30")
+        
+        # Centrar sobre la ventana padre
+        self.transient(parent)
+        self.grab_set()
+        
+        # Calcular coordenadas relativas
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+        x = parent_x + (parent_w - 380) // 2
+        y = parent_y + (parent_h - 180) // 2
+        self.geometry(f"+{x}+{y}")
+        
+        self.result = False
+        self.dont_show_again = False
+        
+        lbl = ctk.CTkLabel(self, text=message, font=("Segoe UI", 12), text_color="#f1f5f9", wraplength=340)
+        lbl.pack(pady=(25, 10), padx=20)
+        
+        self.cb = ctk.CTkCheckBox(self, text="No volver a mostrar", font=("Segoe UI", 11), text_color="#94a3b8", fg_color="#5850ec", border_color="#1e293b", hover_color="#4f46e5")
+        self.cb.pack(pady=(0, 15))
+        
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(fill="x", side="bottom", pady=15, padx=20)
+        
+        btn_yes = ctk.CTkButton(btn_frame, text="Sí", width=100, fg_color="#5850ec", hover_color="#4f46e5", font=("Segoe UI", 12, "bold"), command=self.on_yes)
+        btn_yes.pack(side="right", padx=5)
+        parent.apply_fade_hover(btn_yes, "#5850ec", "#4f46e5")
+        
+        btn_no = ctk.CTkButton(btn_frame, text="No", width=100, fg_color="#1e293b", hover_color="#334155", font=("Segoe UI", 12, "bold"), command=self.on_no)
+        btn_no.pack(side="right", padx=5)
+        parent.apply_fade_hover(btn_no, "#1e293b", "#334155")
+        
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        parent.wait_window(self)
+        
+    def on_yes(self):
+        self.result = True
+        self.dont_show_again = self.cb.get()
+        self.destroy()
+        
+    def on_no(self):
+        self.result = False
+        self.destroy()
+        
+    def on_close(self):
+        self.result = False
+        self.destroy()
+
 class BotThread(threading.Thread):
     def __init__(self, token, prefix, bridge):
         super().__init__()
@@ -122,6 +186,7 @@ class ScriptBotStudioApp(ctk.CTk):
         self.current_user_id = None
         self.current_username = None
         self.active_bot_data = None  
+        self.load_settings()
         self.bridge = BotBridge()
         self.bot_thread = None
         self.last_song_title = None
@@ -162,15 +227,16 @@ class ScriptBotStudioApp(ctk.CTk):
             "remember": True
         }
         try:
-            with open("remember.json", "w", encoding="utf-8") as f:
+            with open(os.path.join(get_app_dir(), "remember.json"), "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception as e:
             print(f"Error al guardar credenciales recordadas: {e}")
 
     def load_remember_credentials(self):
-        if os.path.exists("remember.json"):
+        filepath = os.path.join(get_app_dir(), "remember.json")
+        if os.path.exists(filepath):
             try:
-                with open("remember.json", "r", encoding="utf-8") as f:
+                with open(filepath, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if data.get("remember"):
                         username = data.get("username")
@@ -180,6 +246,33 @@ class ScriptBotStudioApp(ctk.CTk):
             except Exception as e:
                 print(f"Error al cargar credenciales recordadas: {e}")
         return None, None
+
+    # --- LÓGICA DE CONFIGURACIONES ---
+
+    def load_settings(self):
+        self.settings = {
+            "skip_confirm_delete_bot": False,
+            "skip_confirm_dashboard_leave": False,
+            "skip_confirm_app_close": False
+        }
+        filepath = os.path.join(get_app_dir(), "settings.json")
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    for key in self.settings:
+                        if key in loaded:
+                            self.settings[key] = bool(loaded[key])
+            except Exception as e:
+                print(f"Error al cargar configuraciones: {e}")
+
+    def save_settings(self):
+        try:
+            filepath = os.path.join(get_app_dir(), "settings.json")
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"Error al guardar configuraciones: {e}")
 
     # --- PANTALLAS DE AUTENTICACION ---
 
@@ -274,9 +367,10 @@ class ScriptBotStudioApp(ctk.CTk):
             if self.remember_var.get():
                 self.save_remember_credentials(username, password)
             else:
-                if os.path.exists("remember.json"):
+                filepath = os.path.join(get_app_dir(), "remember.json")
+                if os.path.exists(filepath):
                     try:
-                        os.remove("remember.json")
+                        os.remove(filepath)
                     except Exception:
                         pass
                         
@@ -426,7 +520,16 @@ class ScriptBotStudioApp(ctk.CTk):
             messagebox.showerror("Error", message)
 
     def handle_delete_bot(self, bot_id):
-        if messagebox.askyesno("Confirmar", "¿Seguro que quieres eliminar este bot?"):
+        if self.settings.get("skip_confirm_delete_bot"):
+            confirmed = True
+        else:
+            dialog = CTkConfirmDialog(self, "Confirmar", "¿Seguro que quieres eliminar este bot?")
+            confirmed = dialog.result
+            if confirmed and dialog.dont_show_again:
+                self.settings["skip_confirm_delete_bot"] = True
+                self.save_settings()
+                
+        if confirmed:
             if database.delete_bot(bot_id, self.current_user_id):
                 self.load_bots_list()
             else:
@@ -705,7 +808,16 @@ class ScriptBotStudioApp(ctk.CTk):
 
     def go_to_dashboard(self):
         if self.bridge.status in ["online", "connecting"]:
-            if not messagebox.askyesno("Confirmar", "El bot sigue ejecutándose en segundo plano. ¿Volver al Dashboard?"):
+            if self.settings.get("skip_confirm_dashboard_leave"):
+                confirmed = True
+            else:
+                dialog = CTkConfirmDialog(self, "Confirmar", "El bot sigue ejecutándose en segundo plano. ¿Volver al Dashboard?")
+                confirmed = dialog.result
+                if confirmed and dialog.dont_show_again:
+                    self.settings["skip_confirm_dashboard_leave"] = True
+                    self.save_settings()
+            
+            if not confirmed:
                 return
         self.switch_screen_with_fade(self.show_dashboard)
 
@@ -1307,6 +1419,15 @@ class ScriptBotStudioApp(ctk.CTk):
     # --- CIERRE SEGURO ---
 
     def on_closing(self):
-        if messagebox.askyesno("Salir", "¿Seguro que quieres cerrar ScriptBot Studio?"):
+        if self.settings.get("skip_confirm_app_close"):
+            confirmed = True
+        else:
+            dialog = CTkConfirmDialog(self, "Salir", "¿Seguro que quieres cerrar ScriptBot Studio?")
+            confirmed = dialog.result
+            if confirmed and dialog.dont_show_again:
+                self.settings["skip_confirm_app_close"] = True
+                self.save_settings()
+                
+        if confirmed:
             self.on_closing_bot()
             self.destroy()

@@ -31,6 +31,7 @@ env/
 data.db
 data.db-journal
 remember.json
+settings.json
 
 # FFmpeg
 ffmpeg.exe

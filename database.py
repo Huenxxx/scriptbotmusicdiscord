@@ -1,8 +1,15 @@
 import sqlite3
 import hashlib
 import os
+import sys
 
-DB_FILE = "data.db"
+def get_app_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
+
+DB_FILE = os.path.join(get_app_dir(), "data.db")
 
 def get_connection():
     """Retorna una conexion a la base de datos local con soporte de claves foraneas."""
