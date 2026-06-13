@@ -120,6 +120,7 @@ class ScriptBotStudioApp(ctk.CTk):
         self.bridge = BotBridge()
         self.bot_thread = None
         self.last_song_title = None
+        self.current_song_lrc = []
         
         # Inicializar base de datos
         database.init_db()
@@ -552,6 +553,18 @@ class ScriptBotStudioApp(ctk.CTk):
         self.vol_slider.pack(side="left", fill="x", expand=True, padx=10)
         
         # --- 2. CONFIGURACIÓN PESTAÑA: LETRAS ---
+        self.lyrics_header = ctk.CTkFrame(self.tab_lyrics, fg_color="transparent")
+        self.lyrics_header.pack(fill="x", padx=10, pady=(10, 5))
+        
+        self.current_lyrics_line_lbl = ctk.CTkLabel(
+            self.lyrics_header,
+            text="🎶 Letra no disponible",
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            text_color="#a5b4fc",
+            wraplength=650
+        )
+        self.current_lyrics_line_lbl.pack(fill="x", pady=5)
+        
         self.lyrics_textbox = ctk.CTkTextbox(
             self.tab_lyrics,
             fg_color="#090d16",
@@ -560,7 +573,7 @@ class ScriptBotStudioApp(ctk.CTk):
             border_color="#1e293b",
             border_width=1
         )
-        self.lyrics_textbox.pack(fill="both", expand=True, padx=10, pady=10)
+        self.lyrics_textbox.pack(fill="both", expand=True, padx=10, pady=(5, 10))
         self.lyrics_textbox.insert("1.0", "No se está reproduciendo ninguna canción.")
         self.lyrics_textbox.configure(state="disabled")
         
@@ -615,40 +628,109 @@ class ScriptBotStudioApp(ctk.CTk):
     # --- BÚSQUEDA DE LETRAS EN SEGUNDO PLANO ---
 
     def get_lyrics_from_lrclib(self, song_title):
-        clean_title = song_title
-        for remove_word in ["(Official Video)", "(Video Oficial)", "(Official Audio)", "(Audio)", "Lyric Video", "official video", "Lyrics", "lyrics", "feat.", "ft.", "(Lyrics)"]:
-            clean_title = clean_title.replace(remove_word, "")
-        clean_title = " ".join(clean_title.split())
+        import re
         
-        try:
-            query = urllib.parse.quote(clean_title)
-            url = f"https://lrclib.net/api/search?q={query}"
-            req = urllib.request.Request(url, headers={'User-Agent': 'ScriptBotStudio/1.0'})
-            with urllib.request.urlopen(req, timeout=5) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                if data and isinstance(data, list):
-                    for item in data:
-                        lyrics = item.get('lyrics')
-                        if lyrics:
-                            return lyrics
-            return None
-        except Exception as e:
-            print(f"Error al conectar con LRCLIB: {e}")
-            return None
+        # Generar variaciones de búsqueda para mayor probabilidad de éxito
+        queries = []
+        
+        # Limpieza A: quitar paréntesis y corchetes con su contenido (ej. (Prod. Sceno), [Official Video])
+        clean_a = re.sub(r'\(.*?\)|\[.*?\]', '', song_title).strip()
+        clean_a = " ".join(clean_a.split())
+        if clean_a:
+            queries.append(clean_a)
+            
+        # Limpieza B: si hay un guion, probar solo con la parte derecha (usualmente el título de la canción)
+        if "-" in clean_a:
+            parts = clean_a.split("-", 1)
+            artist = parts[0].strip()
+            track = parts[1].strip()
+            if track:
+                queries.append(track)
+            if artist and track:
+                queries.append(f"{artist} {track}")
+                
+        # Limpieza C: eliminar palabras comunes si aún no están cubiertas
+        clean_c = song_title
+        for remove_word in ["(Official Video)", "(Video Oficial)", "(Official Audio)", "(Audio)", "Lyric Video", "official video", "Lyrics", "lyrics", "feat.", "ft.", "(Lyrics)"]:
+            clean_c = clean_c.replace(remove_word, "")
+        clean_c = " ".join(clean_c.split())
+        if clean_c not in queries:
+            queries.append(clean_c)
+            
+        # Añadir el título original como última opción
+        if song_title not in queries:
+            queries.append(song_title)
+            
+        # Intentar cada variación secuencialmente en LRCLIB
+        for q_str in queries:
+            try:
+                print(f"Buscando letras en LRCLIB con query: '{q_str}'")
+                query = urllib.parse.quote(q_str)
+                url = f"https://lrclib.net/api/search?q={query}"
+                req = urllib.request.Request(url, headers={'User-Agent': 'ScriptBotStudio/1.0'})
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    data = json.loads(response.read().decode('utf-8'))
+                    if data and isinstance(data, list):
+                        for item in data:
+                            if item.get('lyrics') or item.get('syncedLyrics'):
+                                return {
+                                    'lyrics': item.get('lyrics', ''),
+                                    'synced': item.get('syncedLyrics', '')
+                                }
+            except Exception as e:
+                print(f"Error al buscar '{q_str}' en LRCLIB: {e}")
+                
+        return None
 
     def async_fetch_lyrics(self, title):
-        lyrics = self.get_lyrics_from_lrclib(title)
-        self.after(0, lambda: self.safe_update_lyrics(lyrics))
+        lyrics_data = self.get_lyrics_from_lrclib(title)
+        self.after(0, lambda: self.safe_update_lyrics(lyrics_data))
 
-    def safe_update_lyrics(self, lyrics):
-        if hasattr(self, "lyrics_textbox") and self.lyrics_textbox.winfo_exists():
-            self.lyrics_textbox.configure(state="normal")
-            self.lyrics_textbox.delete("1.0", "end")
-            if lyrics:
-                self.lyrics_textbox.insert("end", lyrics)
-            else:
-                self.lyrics_textbox.insert("end", "No se encontraron letras para esta canción.")
-            self.lyrics_textbox.configure(state="disabled")
+    def parse_lrc(self, lrc_text):
+        import re
+        lines = lrc_text.split("\n")
+        parsed = []
+        for line in lines:
+            match = re.match(r'\[(\d+):(\d+)(?:\.(\d+))?\](.*)', line)
+            if match:
+                m = int(match.group(1))
+                s = int(match.group(2))
+                ms_str = match.group(3)
+                ms = int(ms_str) / 100.0 if ms_str else 0.0
+                timestamp = m * 60 + s + ms
+                text = match.group(4).strip()
+                if text:
+                    parsed.append((timestamp, text))
+        parsed.sort(key=lambda x: x[0])
+        return parsed
+
+    def safe_update_lyrics(self, lyrics_data):
+        if not hasattr(self, "lyrics_textbox") or not self.lyrics_textbox.winfo_exists():
+            return
+            
+        self.lyrics_textbox.configure(state="normal")
+        self.lyrics_textbox.delete("1.0", "end")
+        self.current_song_lrc = []
+        
+        if lyrics_data:
+            plain = lyrics_data.get('lyrics', '')
+            synced = lyrics_data.get('synced', '')
+            
+            if plain:
+                self.lyrics_textbox.insert("end", plain)
+            elif synced:
+                import re
+                clean_plain = re.sub(r'\[\d+:\d+(?:\.\d+)?\]', '', synced).strip()
+                self.lyrics_textbox.insert("end", clean_plain)
+                
+            if synced:
+                self.current_song_lrc = self.parse_lrc(synced)
+        else:
+            self.lyrics_textbox.insert("end", "No se encontraron letras para esta canción.")
+            if hasattr(self, "current_lyrics_line_lbl") and self.current_lyrics_line_lbl.winfo_exists():
+                self.current_lyrics_line_lbl.configure(text="🎶 Letra no disponible")
+                
+        self.lyrics_textbox.configure(state="disabled")
 
     # --- ACCIONES DE MUSICA DESDE LA GUI ---
 
@@ -710,6 +792,22 @@ class ScriptBotStudioApp(ctk.CTk):
             self.bridge.state_updated = False
             self.update_bot_ui_state()
             
+        # Actualizar la línea de Karaoke sincronizada en tiempo real
+        if self.bridge.status == "online" and self.bridge.bot and self.current_song_lrc:
+            elapsed = self.bridge.bot.get_elapsed_time()
+            current_line = ""
+            for ts, text in self.current_song_lrc:
+                if ts <= elapsed:
+                    current_line = text
+                else:
+                    break
+            
+            if hasattr(self, "current_lyrics_line_lbl") and self.current_lyrics_line_lbl.winfo_exists():
+                if current_line:
+                    self.current_lyrics_line_lbl.configure(text=f"🎶 {current_line}")
+                else:
+                    self.current_lyrics_line_lbl.configure(text="🎶 (Instrumental / Intro)")
+            
         self.after(100, self.poll_bot_updates)
 
     def update_bot_ui_state(self):
@@ -745,6 +843,9 @@ class ScriptBotStudioApp(ctk.CTk):
                 self.lyrics_textbox.delete("1.0", "end")
                 self.lyrics_textbox.insert("1.0", "No se está reproduciendo ninguna canción.")
                 self.lyrics_textbox.configure(state="disabled")
+            if hasattr(self, "current_lyrics_line_lbl") and self.current_lyrics_line_lbl.winfo_exists():
+                self.current_lyrics_line_lbl.configure(text="🎶 Letra no disponible")
+            self.current_song_lrc = []
             self.last_song_title = None
             return
             
@@ -779,6 +880,9 @@ class ScriptBotStudioApp(ctk.CTk):
                 self.lyrics_textbox.delete("1.0", "end")
                 self.lyrics_textbox.insert("1.0", "No se está reproduciendo ninguna canción.")
                 self.lyrics_textbox.configure(state="disabled")
+            if hasattr(self, "current_lyrics_line_lbl") and self.current_lyrics_line_lbl.winfo_exists():
+                self.current_lyrics_line_lbl.configure(text="🎶 Letra no disponible")
+            self.current_song_lrc = []
             self.last_song_title = None
             
         # Boton de Pausa / Reanudar

@@ -48,6 +48,11 @@ class DiscordMusicBot(commands.Bot):
         self.volume = 0.5
         self.voice_client = None
         
+        # Control de tiempo para sincronizar letras
+        self.track_start_time = None
+        self.track_paused_time = None
+        self.total_paused_duration = 0
+        
         # Enlazar este bot al bridge
         self.bridge.bot = self
         
@@ -165,6 +170,11 @@ class DiscordMusicBot(commands.Bot):
                 
             volume_source = discord.PCMVolumeTransformer(source, volume=self.volume)
             
+            import time
+            self.track_start_time = time.time()
+            self.track_paused_time = None
+            self.total_paused_duration = 0
+            
             def after_playing(error):
                 if error:
                     self.log(f"⚠️ Error durante la reproducción: {error}")
@@ -225,6 +235,8 @@ class DiscordMusicBot(commands.Bot):
         async def pause(ctx):
             if self.voice_client and self.voice_client.is_playing():
                 self.voice_client.pause()
+                import time
+                self.track_paused_time = time.time()
                 self.bridge.update_paused_state(True)
                 await ctx.send("⏸️ Reproducción pausada.")
                 self.log(f"⏸️ Pausado por comando de {ctx.author.display_name}")
@@ -235,6 +247,10 @@ class DiscordMusicBot(commands.Bot):
         async def resume(ctx):
             if self.voice_client and self.voice_client.is_paused():
                 self.voice_client.resume()
+                import time
+                if self.track_paused_time:
+                    self.total_paused_duration += time.time() - self.track_paused_time
+                    self.track_paused_time = None
                 self.bridge.update_paused_state(False)
                 await ctx.send("▶️ Reproducción reanudada.")
                 self.log(f"▶️ Reanudado por comando de {ctx.author.display_name}")
@@ -245,6 +261,9 @@ class DiscordMusicBot(commands.Bot):
         async def stop(ctx):
             self.queue.clear()
             self.bridge.update_queue([])
+            self.track_start_time = None
+            self.track_paused_time = None
+            self.total_paused_duration = 0
             if self.voice_client:
                 if self.voice_client.is_playing() or self.voice_client.is_paused():
                     self.voice_client.stop()
@@ -255,6 +274,9 @@ class DiscordMusicBot(commands.Bot):
 
         @self.command(name="leave", aliases=["disconnect", "dc"])
         async def leave(ctx):
+            self.track_start_time = None
+            self.track_paused_time = None
+            self.total_paused_duration = 0
             if self.voice_client:
                 await self.voice_client.disconnect()
                 self.voice_client = None
@@ -339,6 +361,8 @@ class DiscordMusicBot(commands.Bot):
         """Pausa la canción desde la GUI."""
         if self.voice_client and self.voice_client.is_playing():
             self.voice_client.pause()
+            import time
+            self.track_paused_time = time.time()
             self.bridge.update_paused_state(True)
             self.log("⏸️ Canción pausada desde la GUI.")
 
@@ -346,6 +370,10 @@ class DiscordMusicBot(commands.Bot):
         """Reanuda la canción desde la GUI."""
         if self.voice_client and self.voice_client.is_paused():
             self.voice_client.resume()
+            import time
+            if self.track_paused_time:
+                self.total_paused_duration += time.time() - self.track_paused_time
+                self.track_paused_time = None
             self.bridge.update_paused_state(False)
             self.log("▶️ Canción reanudada desde la GUI.")
 
@@ -353,12 +381,18 @@ class DiscordMusicBot(commands.Bot):
         """Detiene y limpia la cola desde la GUI."""
         self.queue.clear()
         self.bridge.update_queue([])
+        self.track_start_time = None
+        self.track_paused_time = None
+        self.total_paused_duration = 0
         if self.voice_client:
             self.voice_client.stop()
             self.log("⏹️ Reproducción detenida y cola limpiada desde la GUI.")
 
     async def gui_disconnect(self):
         """Desconecta el bot del canal de voz desde la GUI."""
+        self.track_start_time = None
+        self.track_paused_time = None
+        self.total_paused_duration = 0
         if self.voice_client:
             await self.voice_client.disconnect()
             self.voice_client = None
@@ -375,3 +409,14 @@ class DiscordMusicBot(commands.Bot):
         if self.voice_client and self.voice_client.source:
             self.voice_client.source.volume = self.volume
         self.bridge.update_volume(self.volume)
+
+    def get_elapsed_time(self):
+        """Retorna el tiempo transcurrido de la cancion actual en segundos."""
+        import time
+        if not self.voice_client or (not self.voice_client.is_playing() and not self.voice_client.is_paused()):
+            return 0
+        if not self.track_start_time:
+            return 0
+        if self.voice_client.is_paused():
+            return self.track_paused_time - self.track_start_time - self.total_paused_duration
+        return time.time() - self.track_start_time - self.total_paused_duration
