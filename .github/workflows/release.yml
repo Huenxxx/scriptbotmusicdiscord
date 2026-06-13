@@ -38,17 +38,12 @@ jobs:
 
       - name: Compile with PyInstaller
         run: |
-          pyinstaller --name="ScriptBot Studio" --windowed --noconfirm main.py
+          pyinstaller --name="ScriptBot Studio" --onefile --windowed --add-data "ffmpeg.exe;." --noconfirm main.py
 
-      - name: Bundle ffmpeg to dist
+      - name: Rename Portable Executable
         shell: pwsh
         run: |
-          Copy-Item ffmpeg.exe -Destination "dist/ScriptBot Studio/"
-
-      - name: Create Portable ZIP
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "dist/ScriptBot Studio" -DestinationPath "dist/ScriptBot_Studio_Windows_Portable.zip"
+          Copy-Item "dist/ScriptBot Studio.exe" -Destination "dist/ScriptBot_Studio_Windows_Portable.exe"
 
       - name: Compile Setup Installer
         shell: pwsh
@@ -69,7 +64,7 @@ jobs:
           DisableProgramGroupPage=yes
 
           [Files]
-          Source: "dist\\ScriptBot Studio\\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+          Source: "dist\\ScriptBot Studio.exe"; DestDir: "{app}"; Flags: ignoreversion
 
           [Icons]
           Name: "{group}\\ScriptBot Studio"; Filename: "{app}\\ScriptBot Studio.exe"
@@ -83,7 +78,7 @@ jobs:
         with:
           name: windows-binaries
           path: |
-            dist/ScriptBot_Studio_Windows_Portable.zip
+            dist/ScriptBot_Studio_Windows_Portable.exe
             dist/ScriptBot_Studio_Windows_Setup.exe
 
   build-linux:
@@ -117,16 +112,11 @@ jobs:
 
       - name: Compile with PyInstaller
         run: |
-          pyinstaller --name="ScriptBot Studio" --windowed --noconfirm main.py
+          pyinstaller --name="ScriptBot Studio" --onefile --windowed --add-data "ffmpeg:." --noconfirm main.py
 
-      - name: Bundle ffmpeg to dist
+      - name: Rename Portable Executable
         run: |
-          cp ffmpeg "dist/ScriptBot Studio/"
-
-      - name: Create Portable Tarball
-        run: |
-          cd dist
-          tar -czf ScriptBot_Studio_Linux_Portable.tar.gz "ScriptBot Studio"
+          cp "dist/ScriptBot Studio" "dist/ScriptBot_Studio_Linux_Portable"
 
       - name: Create Linux Installer script
         run: |
@@ -136,7 +126,7 @@ jobs:
           INSTALL_DIR="$HOME/.local/share/scriptbot-studio"
           echo "Instalando ScriptBot Studio en $INSTALL_DIR..."
           mkdir -p "$INSTALL_DIR"
-          cp -r "ScriptBot Studio"/* "$INSTALL_DIR/"
+          cp "ScriptBot Studio" "$INSTALL_DIR/"
           chmod +x "$INSTALL_DIR/ScriptBot Studio"
           
           # Crear lanzador de escritorio
@@ -168,7 +158,7 @@ jobs:
         with:
           name: linux-binaries
           path: |
-            dist/ScriptBot_Studio_Linux_Portable.tar.gz
+            dist/ScriptBot_Studio_Linux_Portable
             dist/ScriptBot_Studio_Linux_Installer.tar.gz
 
   release:
@@ -192,9 +182,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/ScriptBot_Studio_Windows_Portable.zip
+            dist/ScriptBot_Studio_Windows_Portable.exe
             dist/ScriptBot_Studio_Windows_Setup.exe
-            dist/ScriptBot_Studio_Linux_Portable.tar.gz
+            dist/ScriptBot_Studio_Linux_Portable
             dist/ScriptBot_Studio_Linux_Installer.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

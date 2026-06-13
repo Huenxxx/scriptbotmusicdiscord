@@ -2,7 +2,6 @@ import os
 import sys
 import shutil
 import subprocess
-import zipfile
 
 def run_cmd(cmd, shell=True):
     print(f"Ejecutando: {cmd}")
@@ -19,49 +18,31 @@ def main():
             print(f"Limpiando {folder}...")
             shutil.rmtree(folder)
 
-    # 2. Ejecutar PyInstaller
+    # 2. Ejecutar PyInstaller en modo --onefile (un solo ejecutable)
     print("Iniciando PyInstaller...")
     # --windowed para ocultar la ventana de consola ya que es una aplicación CTk
     # --noconfirm para sobrescribir sin preguntar
-    # --name para especificar el nombre del ejecutable
-    run_cmd('pyinstaller --name="ScriptBot Studio" --windowed --noconfirm main.py')
+    # --onefile para empaquetar todo en un único .exe
+    # --add-data para incrustar ffmpeg.exe si está presente
+    if os.path.exists("ffmpeg.exe"):
+        print("Incrustando ffmpeg.exe dentro del ejecutable portable...")
+        run_cmd('pyinstaller --name="ScriptBot Studio" --onefile --windowed --add-data "ffmpeg.exe;." --noconfirm main.py')
+    else:
+        print("Advertencia: No se encontró ffmpeg.exe. Compilando sin incrustar ffmpeg...")
+        run_cmd('pyinstaller --name="ScriptBot Studio" --onefile --windowed --noconfirm main.py')
 
     # 3. Verificar que el ejecutable existe
-    exe_dir = os.path.join("dist", "ScriptBot Studio")
-    exe_path = os.path.join(exe_dir, "ScriptBot Studio.exe")
+    exe_path = os.path.join("dist", "ScriptBot Studio.exe")
     if not os.path.exists(exe_path):
         print(f"Error: No se encontró el ejecutable en {exe_path}")
         sys.exit(1)
 
-    # 4. Copiar ffmpeg.exe al directorio dist
-    ffmpeg_src = "ffmpeg.exe"
-    ffmpeg_dst = os.path.join(exe_dir, "ffmpeg.exe")
-    if os.path.exists(ffmpeg_src):
-        print("Copiando ffmpeg.exe al directorio dist...")
-        shutil.copy2(ffmpeg_src, ffmpeg_dst)
-    else:
-        print("Advertencia: No se encontró ffmpeg.exe en el directorio raíz. No se incluirá en el portable.")
+    # 4. Crear el archivo Portable duplicando y renombrando el .exe
+    portable_path = os.path.join("dist", "ScriptBot_Studio_Windows_Portable.exe")
+    print(f"Creando ejecutable portable renombrado en {portable_path}...")
+    shutil.copy2(exe_path, portable_path)
 
-    # 4.5. Copiar firebase_config.json al directorio dist si existe
-    firebase_src = "firebase_config.json"
-    firebase_dst = os.path.join(exe_dir, "firebase_config.json")
-    if os.path.exists(firebase_src):
-        print("Copiando firebase_config.json al directorio dist...")
-        shutil.copy2(firebase_src, firebase_dst)
-
-
-    # 5. Crear ZIP Portable
-    zip_path = os.path.join("dist", "ScriptBot_Studio_Portable.zip")
-    print(f"Creando ZIP portable en {zip_path}...")
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in os.walk(exe_dir):
-            for file in files:
-                filepath = os.path.join(root, file)
-                arcname = os.path.relpath(filepath, "dist")
-                zipf.write(filepath, arcname)
-    print("ZIP Portable creado con éxito.")
-
-    # 6. Generar Script de Inno Setup
+    # 5. Generar Script de Inno Setup para instalar el único .exe
     iss_content = """[Setup]
 AppName=ScriptBot Studio
 AppVersion=1.0.0
@@ -71,13 +52,13 @@ UninstallDisplayIcon={app}\\ScriptBot Studio.exe
 Compression=lzma2
 SolidCompression=yes
 OutputDir=dist
-OutputBaseFilename=ScriptBot_Studio_Setup
+OutputBaseFilename=ScriptBot_Studio_Windows_Setup
 DisableWelcomePage=no
 DisableDirPage=no
 DisableProgramGroupPage=yes
 
 [Files]
-Source: "dist\\ScriptBot Studio\\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "dist\\ScriptBot Studio.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\\ScriptBot Studio"; Filename: "{app}\\ScriptBot Studio.exe"
@@ -88,7 +69,7 @@ Name: "{userdesktop}\\ScriptBot Studio"; Filename: "{app}\\ScriptBot Studio.exe"
         f.write(iss_content)
     print(f"Script de Inno Setup escrito en {iss_path}")
 
-    # 7. Compilar instalador con Inno Setup
+    # 6. Compilar instalador con Inno Setup
     iscc_paths = [
         os.path.expandvars(r"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"),
         r"C:\Users\huenx\AppData\Local\Programs\Inno Setup 6\ISCC.exe",
