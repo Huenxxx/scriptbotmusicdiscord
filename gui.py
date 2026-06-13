@@ -34,6 +34,10 @@ class BotBridge:
         self.is_paused = False
         self.logs_queue = queue.Queue()
         self.state_updated = False
+        self.amplitude = 0.0
+
+    def update_amplitude(self, amp):
+        self.amplitude = amp
 
     def add_log(self, msg):
         self.logs_queue.put(msg)
@@ -121,6 +125,8 @@ class ScriptBotStudioApp(ctk.CTk):
         self.bot_thread = None
         self.last_song_title = None
         self.current_song_lrc = []
+        self.lyrics_offset = 0.0
+        self.visual_amplitude = 0.0
         
         # Inicializar base de datos
         database.init_db()
@@ -580,7 +586,15 @@ class ScriptBotStudioApp(ctk.CTk):
             text_color="#a5b4fc",
             wraplength=750
         )
-        self.lyr_curr_lbl.pack(pady=20)
+        self.lyr_curr_lbl.pack(pady=15)
+
+        # Visualizador de espectro/ritmo reactivo (línea neon)
+        self.vis_bar_container = ctk.CTkFrame(self.lyrics_focus_frame, fg_color="transparent", height=8, width=400)
+        self.vis_bar_container.pack(pady=(0, 15))
+        self.vis_bar_container.pack_propagate(False)
+        
+        self.vis_bar = ctk.CTkFrame(self.vis_bar_container, fg_color="#a5b4fc", height=4, corner_radius=2)
+        self.vis_bar.place(relx=0.5, rely=0.5, anchor="center")
         
         # Línea siguiente (atenuada)
         self.lyr_next_lbl = ctk.CTkLabel(
@@ -616,6 +630,33 @@ class ScriptBotStudioApp(ctk.CTk):
             command=self.toggle_lyrics_view
         )
         self.toggle_lyrics_btn.pack(side="bottom", pady=10)
+
+        # Controles de Sincronización Manual (desfase)
+        self.sync_frame = ctk.CTkFrame(self.lyrics_container, fg_color="transparent")
+        self.sync_frame.pack(side="bottom", fill="x", pady=(5, 5))
+        
+        sync_title = ctk.CTkLabel(self.sync_frame, text="⏱️ Sincronizar:", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color="#94a3b8")
+        sync_title.pack(side="left", padx=(15, 8))
+        
+        btn_opts = {"width": 50, "height": 24, "fg_color": "#1e293b", "hover_color": "#334155", "font": ctk.CTkFont(family="Segoe UI", size=11, weight="bold")}
+        
+        self.btn_sub2 = ctk.CTkButton(self.sync_frame, text="-2.0s", command=lambda: self.adjust_lyrics_offset(-2.0), **btn_opts)
+        self.btn_sub2.pack(side="left", padx=3)
+        
+        self.btn_sub05 = ctk.CTkButton(self.sync_frame, text="-0.5s", command=lambda: self.adjust_lyrics_offset(-0.5), **btn_opts)
+        self.btn_sub05.pack(side="left", padx=3)
+        
+        self.lbl_offset = ctk.CTkLabel(self.sync_frame, text="Desfase: +0.0s", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#5850ec", width=100)
+        self.lbl_offset.pack(side="left", padx=10)
+        
+        self.btn_add05 = ctk.CTkButton(self.sync_frame, text="+0.5s", command=lambda: self.adjust_lyrics_offset(0.5), **btn_opts)
+        self.btn_add05.pack(side="left", padx=3)
+        
+        self.btn_add2 = ctk.CTkButton(self.sync_frame, text="+2.0s", command=lambda: self.adjust_lyrics_offset(2.0), **btn_opts)
+        self.btn_add2.pack(side="left", padx=3)
+        
+        self.btn_reset = ctk.CTkButton(self.sync_frame, text="Reset", fg_color="#ef4444", hover_color="#dc2626", text_color="white", command=self.reset_lyrics_offset, width=50, height=24, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"))
+        self.btn_reset.pack(side="left", padx=(10, 15))
         
         # --- 3. CONFIGURACIÓN PESTAÑA: COLA ---
         self.scrollable_queue = ctk.CTkScrollableFrame(self.tab_queue, fg_color="#090d16", border_color="#1e293b")
@@ -667,7 +708,7 @@ class ScriptBotStudioApp(ctk.CTk):
 
     # --- BÚSQUEDA DE LETRAS EN SEGUNDO PLANO ---
 
-    def get_lyrics_from_lrclib(self, song_title):
+    def get_lyrics_from_lrclib(self, song_title, duration=0):
         import re
         
         # Generar variaciones de búsqueda para mayor probabilidad de éxito
@@ -711,19 +752,30 @@ class ScriptBotStudioApp(ctk.CTk):
                 with urllib.request.urlopen(req, timeout=4) as response:
                     data = json.loads(response.read().decode('utf-8'))
                     if data and isinstance(data, list):
+                        # Puntuación por coincidencia de duración y presencia de syncedLyrics
+                        candidates = []
                         for item in data:
                             if item.get('lyrics') or item.get('syncedLyrics'):
-                                return {
-                                    'lyrics': item.get('lyrics', ''),
-                                    'synced': item.get('syncedLyrics', '')
-                                }
+                                has_synced = 1 if item.get('syncedLyrics') else 0
+                                item_dur = item.get('duration', 0)
+                                dur_diff = abs(item_dur - duration) if duration > 0 and item_dur > 0 else 99999
+                                candidates.append((has_synced, dur_diff, item))
+                                
+                        if candidates:
+                            # Ordenar por tiene letra sincronizada desc, luego dur_diff asc
+                            candidates.sort(key=lambda x: (-x[0], x[1]))
+                            best_item = candidates[0][2]
+                            return {
+                                'lyrics': best_item.get('lyrics', ''),
+                                'synced': best_item.get('syncedLyrics', '')
+                            }
             except Exception as e:
                 print(f"Error al buscar '{q_str}' en LRCLIB: {e}")
                 
         return None
 
-    def async_fetch_lyrics(self, title):
-        lyrics_data = self.get_lyrics_from_lrclib(title)
+    def async_fetch_lyrics(self, title, duration=0):
+        lyrics_data = self.get_lyrics_from_lrclib(title, duration)
         self.after(0, lambda: self.safe_update_lyrics(lyrics_data))
 
     def parse_lrc(self, lrc_text):
@@ -792,10 +844,41 @@ class ScriptBotStudioApp(ctk.CTk):
             self.lyrics_focus_frame.pack_forget()
             self.lyrics_textbox.pack(fill="both", expand=True, padx=10, pady=(10, 5))
             self.toggle_lyrics_btn.configure(text="✨ Ver Modo Enfoque")
+            if hasattr(self, "sync_frame") and self.sync_frame.winfo_exists():
+                self.sync_frame.pack_forget()
         else:
             self.lyrics_textbox.pack_forget()
             self.lyrics_focus_frame.pack(fill="both", expand=True, pady=40)
             self.toggle_lyrics_btn.configure(text="👁 Ver Letra Completa")
+            if hasattr(self, "sync_frame") and self.sync_frame.winfo_exists():
+                # Volver a empaquetar en la posición correcta (encima del botón de alternado)
+                self.toggle_lyrics_btn.pack_forget()
+                self.toggle_lyrics_btn.pack(side="bottom", pady=10)
+                self.sync_frame.pack(side="bottom", fill="x", pady=(5, 5))
+
+    def adjust_lyrics_offset(self, val):
+        self.lyrics_offset += val
+        sign = "+" if self.lyrics_offset >= 0 else ""
+        if hasattr(self, "lbl_offset") and self.lbl_offset.winfo_exists():
+            self.lbl_offset.configure(text=f"Desfase: {sign}{self.lyrics_offset:.1f}s")
+            
+    def reset_lyrics_offset(self):
+        self.lyrics_offset = 0.0
+        if hasattr(self, "lbl_offset") and self.lbl_offset.winfo_exists():
+            self.lbl_offset.configure(text="Desfase: +0.0s")
+
+    def interpolate_color(self, color1, color2, factor):
+        c1 = color1.lstrip('#')
+        c2 = color2.lstrip('#')
+        try:
+            r1, g1, b1 = int(c1[0:2], 16), int(c1[2:4], 16), int(c1[4:6], 16)
+            r2, g2, b2 = int(c2[0:2], 16), int(c2[2:4], 16), int(c2[4:6], 16)
+            r = int(r1 + (r2 - r1) * factor)
+            g = int(g1 + (g2 - g1) * factor)
+            b = int(b1 + (b2 - b1) * factor)
+            return f"#{r:02x}{g:02x}{b:02x}"
+        except Exception:
+            return color1
 
     # --- ACCIONES DE MUSICA DESDE LA GUI ---
 
@@ -857,9 +940,24 @@ class ScriptBotStudioApp(ctk.CTk):
             self.bridge.state_updated = False
             self.update_bot_ui_state()
             
+        # Calcular visualización de espectro reactiva ("punch")
+        is_playing = (self.bridge.status == "online" and self.bridge.bot and not self.bridge.is_paused)
+        amp = self.bridge.amplitude if is_playing else 0.0
+        # Suavizado exponencial para transiciones suaves de pulso
+        self.visual_amplitude = self.visual_amplitude * 0.7 + amp * 0.3
+        
+        # Color reactivo de la letra activa e indicador inferior
+        reactive_color = self.interpolate_color("#a5b4fc", "#f43f5e", self.visual_amplitude)
+        
+        if hasattr(self, "vis_bar") and self.vis_bar.winfo_exists():
+            # El ancho de la barra neon se contrae/expande según la amplitud (punch)
+            w = int(20 + self.visual_amplitude * 360)
+            self.vis_bar.configure(width=w, fg_color=reactive_color)
+            
         # Actualizar las líneas de Karaoke (previo, activo, siguiente) en la vista de enfoque
         if self.bridge.status == "online" and self.bridge.bot and self.current_song_lrc:
-            elapsed = self.bridge.bot.get_elapsed_time()
+            # Aplicar desfase manual configurado por el usuario
+            elapsed = self.bridge.bot.get_elapsed_time() + self.lyrics_offset
             
             active_idx = -1
             for idx, (ts, text) in enumerate(self.current_song_lrc):
@@ -884,10 +982,18 @@ class ScriptBotStudioApp(ctk.CTk):
                     
             if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
                 self.lyr_prev_lbl.configure(text=prev_line)
-                self.lyr_curr_lbl.configure(text=curr_line)
+                
+                # Modificar tamaño de la fuente dinámicamente según la amplitud actual (punch)
+                dynamic_font_size = int(24 + self.visual_amplitude * 14)
+                self.lyr_curr_lbl.configure(
+                    text=curr_line,
+                    text_color=reactive_color,
+                    font=ctk.CTkFont(family="Segoe UI", size=dynamic_font_size, weight="bold")
+                )
+                
                 self.lyr_next_lbl.configure(text=next_line)
             
-        self.after(100, self.poll_bot_updates)
+        self.after(50, self.poll_bot_updates)
 
     def update_bot_ui_state(self):
         if not hasattr(self, "status_dot") or not self.status_dot.winfo_exists():
@@ -947,12 +1053,18 @@ class ScriptBotStudioApp(ctk.CTk):
             # Buscar letra en segundo plano si cambió de canción
             if self.last_song_title != title:
                 self.last_song_title = title
+                # Resetear desfase de letras para la nueva canción
+                self.lyrics_offset = 0.0
+                if hasattr(self, "lbl_offset") and self.lbl_offset.winfo_exists():
+                    self.lbl_offset.configure(text="Desfase: +0.0s")
+                    
                 if hasattr(self, "lyrics_textbox") and self.lyrics_textbox.winfo_exists():
                     self.lyrics_textbox.configure(state="normal")
                     self.lyrics_textbox.delete("1.0", "end")
                     self.lyrics_textbox.insert("1.0", f"🔍 Buscando letra de: {title}...")
                     self.lyrics_textbox.configure(state="disabled")
-                    threading.Thread(target=self.async_fetch_lyrics, args=(title,), daemon=True).start()
+                    duration = song.get("duration", 0)
+                    threading.Thread(target=self.async_fetch_lyrics, args=(title, duration), daemon=True).start()
         else:
             self.song_title_lbl.configure(text="Ninguna canción reproduciéndose")
             self.song_meta_lbl.configure(text="-")

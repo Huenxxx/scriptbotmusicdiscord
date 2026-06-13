@@ -4,6 +4,8 @@ from discord.ext import commands
 import yt_dlp
 import os
 import logging
+import struct
+import math
 
 # Configurar logs
 logger = logging.getLogger("ScriptBot")
@@ -31,6 +33,37 @@ FFMPEG_OPTIONS = {
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
+
+class PunchDetectingAudioSource(discord.AudioSource):
+    def __init__(self, original, bridge):
+        self.original = original
+        self.bridge = bridge
+
+    def read(self):
+        data = self.original.read()
+        if not data:
+            self.bridge.update_amplitude(0.0)
+            return b''
+
+        try:
+            count = len(data) // 2
+            if count > 0:
+                samples = struct.unpack(f"<{count}h", data)
+                # Submuestreo para ahorrar CPU (1 de cada 4 muestras)
+                subset = samples[::4]
+                if subset:
+                    sum_squares = sum(s * s for s in subset)
+                    rms = math.sqrt(sum_squares / len(subset))
+                    # Normalizar respecto al máximo valor de amplitud 16-bit (32768)
+                    normalized = min(rms / 32768.0, 1.0)
+                    self.bridge.update_amplitude(normalized)
+        except Exception:
+            pass
+
+        return data
+
+    def is_opus(self):
+        return self.original.is_opus()
 
 class DiscordMusicBot(commands.Bot):
     def __init__(self, token, prefix, bridge):
@@ -169,6 +202,7 @@ class DiscordMusicBot(commands.Bot):
                 source = discord.FFmpegPCMAudio(self.current_track['url'], executable=ffmpeg_path, **FFMPEG_OPTIONS)
                 
             volume_source = discord.PCMVolumeTransformer(source, volume=self.volume)
+            punch_source = PunchDetectingAudioSource(volume_source, self.bridge)
             
             import time
             self.track_start_time = time.time()
@@ -178,9 +212,11 @@ class DiscordMusicBot(commands.Bot):
             def after_playing(error):
                 if error:
                     self.log(f"⚠️ Error durante la reproducción: {error}")
+                # Resetear amplitud al finalizar pista
+                self.bridge.update_amplitude(0.0)
                 asyncio.run_coroutine_threadsafe(self.play_next(), self.loop)
                 
-            self.voice_client.play(volume_source, after=after_playing)
+            self.voice_client.play(punch_source, after=after_playing)
             
         except Exception as e:
             self.log(f"⚠️ Error al iniciar reproducción: {str(e)}")
