@@ -10,6 +10,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 import database
 import discord
+import colorsys
 
 # Configurar apariencia de CustomTkinter
 ctk.set_appearance_mode("Dark")
@@ -127,6 +128,11 @@ class ScriptBotStudioApp(ctk.CTk):
         self.current_song_lrc = []
         self.lyrics_offset = 0.0
         self.visual_amplitude = 0.0
+        self.song_color_base = "#a5b4fc"
+        self.song_color_punch = "#f43f5e"
+        self.lyrics_hue = 0.0
+        self.in_lyric_transition = False
+        self.last_curr_line = ""
         
         # Inicializar base de datos
         database.init_db()
@@ -211,6 +217,7 @@ class ScriptBotStudioApp(ctk.CTk):
         # Boton Ingresar
         login_btn = ctk.CTkButton(login_frame, text="Iniciar Sesión", width=300, height=42, fg_color="#5850ec", hover_color="#4f46e5", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=self.handle_login)
         login_btn.pack(pady=15)
+        self.apply_fade_hover(login_btn, "#5850ec", "#4f46e5")
         
         # Enlace a registro
         register_link = ctk.CTkLabel(login_frame, text="¿No tienes cuenta? Regístrate aquí", font=ctk.CTkFont(family="Segoe UI", size=12, underline=True), text_color="#94a3b8", cursor="hand2")
@@ -248,6 +255,7 @@ class ScriptBotStudioApp(ctk.CTk):
         
         register_btn = ctk.CTkButton(register_frame, text="Registrarse", width=300, height=42, fg_color="#10b981", hover_color="#059669", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=self.handle_register)
         register_btn.pack(pady=18)
+        self.apply_fade_hover(register_btn, "#10b981", "#059669")
         
         login_link = ctk.CTkLabel(register_frame, text="¿Ya tienes cuenta? Inicia sesión", font=ctk.CTkFont(family="Segoe UI", size=12, underline=True), text_color="#94a3b8", cursor="hand2")
         login_link.pack(pady=10)
@@ -320,6 +328,7 @@ class ScriptBotStudioApp(ctk.CTk):
         # Boton Cerrar Sesion
         logout_btn = ctk.CTkButton(sidebar, text="Cerrar Sesión", fg_color="#ef4444", hover_color="#dc2626", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), height=32, command=self.handle_logout)
         logout_btn.grid(row=5, column=0, pady=20, padx=20, sticky="ew")
+        self.apply_fade_hover(logout_btn, "#ef4444", "#dc2626")
         
         # --- CONTENIDO PRINCIPAL ---
         main_content = ctk.CTkFrame(self.container, corner_radius=0, fg_color="#090d16")
@@ -362,6 +371,7 @@ class ScriptBotStudioApp(ctk.CTk):
         
         add_btn = ctk.CTkButton(form_frame, text="Registrar Bot", command=self.handle_add_bot, width=250, fg_color="#5850ec", hover_color="#4f46e5", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), height=38)
         add_btn.pack(pady=25)
+        self.apply_fade_hover(add_btn, "#5850ec", "#4f46e5")
 
     def load_bots_list(self):
         for widget in self.scrollable_bots.winfo_children():
@@ -394,9 +404,11 @@ class ScriptBotStudioApp(ctk.CTk):
             
             manage_btn = ctk.CTkButton(actions_frame, text="Gestionar", width=80, height=28, fg_color="#2563eb", hover_color="#1d4ed8", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), command=lambda b=bot: self.select_bot(b))
             manage_btn.pack(side="left", padx=5)
+            self.apply_fade_hover(manage_btn, "#2563eb", "#1d4ed8")
             
             delete_btn = ctk.CTkButton(actions_frame, text="Eliminar", width=60, height=28, fg_color="#ef4444", hover_color="#dc2626", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), command=lambda bid=bot["id"]: self.handle_delete_bot(bid))
             delete_btn.pack(side="left", padx=5)
+            self.apply_fade_hover(delete_btn, "#ef4444", "#dc2626")
 
     def handle_add_bot(self):
         name = self.bot_name_entry.get().strip()
@@ -447,8 +459,9 @@ class ScriptBotStudioApp(ctk.CTk):
         bot_sidebar.grid(row=0, column=0, sticky="nsew")
         bot_sidebar.grid_rowconfigure(6, weight=1)
         
-        back_btn = ctk.CTkButton(bot_sidebar, text="◀ Dashboard", fg_color="gray", hover_color="#4b5563", height=28, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), command=self.go_to_dashboard)
+        back_btn = ctk.CTkButton(bot_sidebar, text="◀ Dashboard", fg_color="#6b7280", hover_color="#4b5563", height=28, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), command=self.go_to_dashboard)
         back_btn.grid(row=0, column=0, pady=(20, 20), padx=20, sticky="w")
+        self.apply_fade_hover(back_btn, "#6b7280", "#4b5563")
         
         # Nombre del bot activo
         active_bot_title = ctk.CTkLabel(bot_sidebar, text=self.active_bot_data["name"], font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"), text_color="#5850ec")
@@ -480,6 +493,7 @@ class ScriptBotStudioApp(ctk.CTk):
         
         self.start_bot_btn = ctk.CTkButton(power_frame, text="Iniciar Bot", fg_color="#10b981", hover_color="#059669", height=38, font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=self.toggle_bot_power)
         self.start_bot_btn.pack(fill="x", pady=5)
+        self.apply_fade_hover(self.start_bot_btn, "#10b981", "#059669")
         
         # --- ZONA DE TRABAJO (MÚSICA & CONSOLA) ---
         bot_workspace = ctk.CTkFrame(self.container, corner_radius=0, fg_color="#090d16")
@@ -519,6 +533,7 @@ class ScriptBotStudioApp(ctk.CTk):
         
         play_btn = ctk.CTkButton(search_frame, text="Play", width=75, height=38, fg_color="#2563eb", hover_color="#1d4ed8", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), command=self.gui_action_play)
         play_btn.pack(side="left", padx=(8, 0))
+        self.apply_fade_hover(play_btn, "#2563eb", "#1d4ed8")
         
         # Ficha "Ahora sonando"
         self.now_playing_frame = ctk.CTkFrame(player_frame, fg_color="#090d16", height=115, corner_radius=8, border_color="#1e293b", border_width=1)
@@ -537,15 +552,19 @@ class ScriptBotStudioApp(ctk.CTk):
         
         self.pause_btn = ctk.CTkButton(ctrl_frame, text="⏸ Pausa", width=100, height=36, fg_color="#5850ec", hover_color="#4f46e5", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), command=self.gui_action_pause)
         self.pause_btn.pack(side="left", padx=8)
+        self.apply_fade_hover(self.pause_btn, "#5850ec", "#4f46e5")
         
         skip_btn = ctk.CTkButton(ctrl_frame, text="⏭ Saltar", width=100, height=36, fg_color="#2563eb", hover_color="#1d4ed8", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), command=self.gui_action_skip)
         skip_btn.pack(side="left", padx=8)
+        self.apply_fade_hover(skip_btn, "#2563eb", "#1d4ed8")
         
         stop_btn = ctk.CTkButton(ctrl_frame, text="⏹ Detener", width=100, height=36, fg_color="#ef4444", hover_color="#dc2626", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), command=self.gui_action_stop)
         stop_btn.pack(side="left", padx=8)
+        self.apply_fade_hover(stop_btn, "#ef4444", "#dc2626")
         
-        dc_btn = ctk.CTkButton(ctrl_frame, text="👋 Salir de Voz", width=110, height=36, fg_color="gray", hover_color="#4b5563", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), command=self.gui_action_disconnect)
+        dc_btn = ctk.CTkButton(ctrl_frame, text="👋 Salir de Voz", width=110, height=36, fg_color="#6b7280", hover_color="#4b5563", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), command=self.gui_action_disconnect)
         dc_btn.pack(side="left", padx=8)
+        self.apply_fade_hover(dc_btn, "#6b7280", "#4b5563")
         
         # Slider de Volumen
         vol_frame = ctk.CTkFrame(player_frame, fg_color="transparent")
@@ -630,6 +649,7 @@ class ScriptBotStudioApp(ctk.CTk):
             command=self.toggle_lyrics_view
         )
         self.toggle_lyrics_btn.pack(side="bottom", pady=10)
+        self.apply_fade_hover(self.toggle_lyrics_btn, "#1c283d", "#24344f")
 
         # Controles de Sincronización Manual (desfase)
         self.sync_frame = ctk.CTkFrame(self.lyrics_container, fg_color="transparent")
@@ -642,21 +662,26 @@ class ScriptBotStudioApp(ctk.CTk):
         
         self.btn_sub2 = ctk.CTkButton(self.sync_frame, text="-2.0s", command=lambda: self.adjust_lyrics_offset(-2.0), **btn_opts)
         self.btn_sub2.pack(side="left", padx=3)
+        self.apply_fade_hover(self.btn_sub2, "#1e293b", "#334155")
         
         self.btn_sub05 = ctk.CTkButton(self.sync_frame, text="-0.5s", command=lambda: self.adjust_lyrics_offset(-0.5), **btn_opts)
         self.btn_sub05.pack(side="left", padx=3)
+        self.apply_fade_hover(self.btn_sub05, "#1e293b", "#334155")
         
         self.lbl_offset = ctk.CTkLabel(self.sync_frame, text="Desfase: +0.0s", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color="#5850ec", width=100)
         self.lbl_offset.pack(side="left", padx=10)
         
         self.btn_add05 = ctk.CTkButton(self.sync_frame, text="+0.5s", command=lambda: self.adjust_lyrics_offset(0.5), **btn_opts)
         self.btn_add05.pack(side="left", padx=3)
+        self.apply_fade_hover(self.btn_add05, "#1e293b", "#334155")
         
         self.btn_add2 = ctk.CTkButton(self.sync_frame, text="+2.0s", command=lambda: self.adjust_lyrics_offset(2.0), **btn_opts)
         self.btn_add2.pack(side="left", padx=3)
+        self.apply_fade_hover(self.btn_add2, "#1e293b", "#334155")
         
         self.btn_reset = ctk.CTkButton(self.sync_frame, text="Reset", fg_color="#ef4444", hover_color="#dc2626", text_color="white", command=self.reset_lyrics_offset, width=50, height=24, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"))
         self.btn_reset.pack(side="left", padx=(10, 15))
+        self.apply_fade_hover(self.btn_reset, "#ef4444", "#dc2626")
         
         # --- 3. CONFIGURACIÓN PESTAÑA: COLA ---
         self.scrollable_queue = ctk.CTkScrollableFrame(self.tab_queue, fg_color="#090d16", border_color="#1e293b")
@@ -708,7 +733,7 @@ class ScriptBotStudioApp(ctk.CTk):
 
     # --- BÚSQUEDA DE LETRAS EN SEGUNDO PLANO ---
 
-    def get_lyrics_from_lrclib(self, song_title, duration=0):
+    def get_lyrics_from_lrclib(self, song_title, duration=0, progress_callback=None):
         import re
         
         # Generar variaciones de búsqueda para mayor probabilidad de éxito
@@ -743,9 +768,10 @@ class ScriptBotStudioApp(ctk.CTk):
             queries.append(song_title)
             
         # Intentar cada variación secuencialmente en LRCLIB
-        for q_str in queries:
+        for idx, q_str in enumerate(queries, 1):
             try:
-                print(f"Buscando letras en LRCLIB con query: '{q_str}'")
+                if progress_callback:
+                    progress_callback(idx, q_str)
                 query = urllib.parse.quote(q_str)
                 url = f"https://lrclib.net/api/search?q={query}"
                 req = urllib.request.Request(url, headers={'User-Agent': 'ScriptBotStudio/1.0'})
@@ -769,13 +795,16 @@ class ScriptBotStudioApp(ctk.CTk):
                                 'lyrics': best_item.get('lyrics', ''),
                                 'synced': best_item.get('syncedLyrics', '')
                             }
-            except Exception as e:
-                print(f"Error al buscar '{q_str}' en LRCLIB: {e}")
+            except Exception:
+                # Silenciar errores de lectura/conexión en terminal
+                pass
                 
         return None
 
     def async_fetch_lyrics(self, title, duration=0):
-        lyrics_data = self.get_lyrics_from_lrclib(title, duration)
+        def progress_cb(idx, q_str):
+            self.after(0, lambda: self.safe_show_search_progress(idx, q_str))
+        lyrics_data = self.get_lyrics_from_lrclib(title, duration, progress_callback=progress_cb)
         self.after(0, lambda: self.safe_update_lyrics(lyrics_data))
 
     def parse_lrc(self, lrc_text):
@@ -880,6 +909,113 @@ class ScriptBotStudioApp(ctk.CTk):
         except Exception:
             return color1
 
+    def apply_fade_hover(self, btn, normal_color, hover_color):
+        """Aplica un efecto de transición de color suave (fade) de 100ms en el estado hover del botón."""
+        btn.custom_normal_color = normal_color
+        btn.custom_hover_color = hover_color
+        btn.current_transition = None
+        
+        btn.configure(hover=False, fg_color=normal_color)
+        
+        def fade(step, reverse=False):
+            if not btn.winfo_exists():
+                return
+            steps = 5
+            delay = 20  # 100ms en total (5 pasos x 20ms)
+            factor = step / steps
+            if reverse:
+                factor = 1.0 - factor
+            color = self.interpolate_color(btn.custom_normal_color, btn.custom_hover_color, factor)
+            btn.configure(fg_color=color)
+            if step < steps:
+                btn.current_transition = btn.after(delay, lambda: fade(step + 1, reverse))
+            else:
+                btn.configure(fg_color=btn.custom_hover_color if not reverse else btn.custom_normal_color)
+                btn.current_transition = None
+
+        def on_enter(e):
+            if hasattr(btn, "current_transition") and btn.current_transition:
+                btn.after_cancel(btn.current_transition)
+            fade(1, reverse=False)
+
+        def on_leave(e):
+            if hasattr(btn, "current_transition") and btn.current_transition:
+                btn.after_cancel(btn.current_transition)
+            fade(1, reverse=True)
+
+        btn.bind("<Enter>", on_enter)
+        btn.bind("<Leave>", on_leave)
+
+    def get_song_feeling_colors(self, title):
+        """Determina el esquema de colores de la canción según palabras clave en su título."""
+        title_lower = title.lower()
+        # Sad / Melancholic songs (e.g. Amorfoda) -> Tonos azul cielo a azul profundo
+        if any(w in title_lower for w in ["amorfoda", "sad", "triste", "llorar", "acoustic", "acustico", "piano", "broken"]):
+            return "#60a5fa", "#2563eb"
+        # Energetic / Aggressive / Trap -> Tonos rosa neón a rojo brillante
+        elif any(w in title_lower for w in ["trap", "phonk", "bass", "metal", "rock", "rap", "speed", "remix"]):
+            return "#f43f5e", "#e11d48"
+        # Chill / Lo-Fi / Summer -> Tonos turquesa a verde esmeralda
+        elif any(w in title_lower for w in ["lofi", "chill", "relax", "calm", "happy", "summer", "relaxing"]):
+            return "#2dd4bf", "#059669"
+        # Por defecto -> Se calcula dinámicamente con rotación HSL lenta
+        return None, None
+
+    def hsl_to_hex(self, h, s, l):
+        """Convierte coordenadas HSL (H: 0-360, S: 0-100, L: 0-100) a color hexadecimal."""
+        r, g, b = colorsys.hls_to_rgb(h / 360.0, l / 100.0, s / 100.0)
+        return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
+    def trigger_lyric_transition(self, new_text, target_color):
+        """Ejecuta una transición de color de desvanecimiento (fade-out/fade-in) para el verso activo."""
+        if not hasattr(self, "lyr_curr_lbl") or not self.lyr_curr_lbl.winfo_exists():
+            return
+            
+        self.in_lyric_transition = True
+        bg_color = "#131d30"  # Color de fondo del panel de pestañas
+        steps = 4
+        delay = 40  # 160ms para fade-out, 160ms para fade-in
+        
+        def fade_out(step):
+            if not self.lyr_curr_lbl.winfo_exists():
+                self.in_lyric_transition = False
+                return
+            if step <= steps:
+                factor = 1.0 - (step / steps)
+                color = self.interpolate_color(bg_color, target_color, factor)
+                self.lyr_curr_lbl.configure(text_color=color)
+                self.after(delay, lambda: fade_out(step + 1))
+            else:
+                self.lyr_curr_lbl.configure(text=new_text)
+                fade_in(1)
+                
+        def fade_in(step):
+            if not self.lyr_curr_lbl.winfo_exists():
+                self.in_lyric_transition = False
+                return
+            if step <= steps:
+                factor = step / steps
+                color = self.interpolate_color(bg_color, target_color, factor)
+                self.lyr_curr_lbl.configure(text_color=color)
+                self.after(delay, lambda: fade_in(step + 1))
+            else:
+                self.in_lyric_transition = False
+                
+        fade_out(1)
+
+    def safe_show_search_progress(self, idx, q_str):
+        """Actualiza la interfaz con el estado actual de la búsqueda en segundo plano de forma limpia."""
+        # Limpieza estética del query para el usuario
+        clean_q = q_str.split(" (Video")[0].split(" (Official")[0]
+        msg = f"🔍 Buscando letras... (Opción {idx}: '{clean_q}')"
+        if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
+            self.lyr_curr_lbl.configure(text=msg, text_color="#94a3b8")
+        if hasattr(self, "lyrics_textbox") and self.lyrics_textbox.winfo_exists():
+            self.lyrics_textbox.configure(state="normal")
+            self.lyrics_textbox.delete("1.0", "end")
+            self.lyrics_textbox.insert("1.0", f"🔍 Buscando letras en LRCLIB...\n\nOpción {idx}: {q_str}")
+            self.lyrics_textbox.configure(state="disabled")
+
     # --- ACCIONES DE MUSICA DESDE LA GUI ---
 
     def gui_action_play(self):
@@ -940,14 +1076,26 @@ class ScriptBotStudioApp(ctk.CTk):
             self.bridge.state_updated = False
             self.update_bot_ui_state()
             
+        # Incrementar ángulo de rotación de color HSL lenta
+        self.lyrics_hue = (self.lyrics_hue + 0.4) % 360
+        
         # Calcular visualización de espectro reactiva ("punch")
         is_playing = (self.bridge.status == "online" and self.bridge.bot and not self.bridge.is_paused)
         amp = self.bridge.amplitude if is_playing else 0.0
         # Suavizado exponencial para transiciones suaves de pulso
         self.visual_amplitude = self.visual_amplitude * 0.7 + amp * 0.3
         
+        # Determinar colores base y de golpe (ánimo o HSL dinámico)
+        if self.song_color_base is not None:
+            color_base = self.song_color_base
+            color_punch = self.song_color_punch
+        else:
+            # Rotación de color suave por defecto para ambiente
+            color_base = self.hsl_to_hex(self.lyrics_hue, 80, 75)
+            color_punch = self.hsl_to_hex((self.lyrics_hue + 45) % 360, 100, 60)
+            
         # Color reactivo de la letra activa e indicador inferior
-        reactive_color = self.interpolate_color("#a5b4fc", "#f43f5e", self.visual_amplitude)
+        reactive_color = self.interpolate_color(color_base, color_punch, self.visual_amplitude)
         
         if hasattr(self, "vis_bar") and self.vis_bar.winfo_exists():
             # El ancho de la barra neon se contrae/expande según la amplitud (punch)
@@ -983,13 +1131,18 @@ class ScriptBotStudioApp(ctk.CTk):
             if hasattr(self, "lyr_curr_lbl") and self.lyr_curr_lbl.winfo_exists():
                 self.lyr_prev_lbl.configure(text=prev_line)
                 
-                # Modificar tamaño de la fuente dinámicamente según la amplitud actual (punch)
-                dynamic_font_size = int(24 + self.visual_amplitude * 14)
-                self.lyr_curr_lbl.configure(
-                    text=curr_line,
-                    text_color=reactive_color,
-                    font=ctk.CTkFont(family="Segoe UI", size=dynamic_font_size, weight="bold")
-                )
+                # Ejecutar transición de fundido si cambia la línea de texto
+                if curr_line != self.last_curr_line:
+                    self.last_curr_line = curr_line
+                    self.trigger_lyric_transition(curr_line, reactive_color)
+                elif not self.in_lyric_transition:
+                    # Modificar tamaño de la fuente dinámicamente según la amplitud actual (punch)
+                    dynamic_font_size = int(24 + self.visual_amplitude * 14)
+                    self.lyr_curr_lbl.configure(
+                        text=curr_line,
+                        text_color=reactive_color,
+                        font=ctk.CTkFont(family="Segoe UI", size=dynamic_font_size, weight="bold")
+                    )
                 
                 self.lyr_next_lbl.configure(text=next_line)
             
@@ -1005,7 +1158,9 @@ class ScriptBotStudioApp(ctk.CTk):
             self.status_dot.configure(text_color="#10b981")
             self.status_txt.configure(text="Conectado")
             if hasattr(self, "start_bot_btn") and self.start_bot_btn.winfo_exists():
-                self.start_bot_btn.configure(text="Apagar Bot", fg_color="#ef4444", hover_color="#dc2626", state="normal")
+                self.start_bot_btn.configure(text="Apagar Bot", fg_color="#ef4444", state="normal")
+                self.start_bot_btn.custom_normal_color = "#ef4444"
+                self.start_bot_btn.custom_hover_color = "#dc2626"
         elif status == "connecting":
             self.status_dot.configure(text_color="#fbbf24")
             self.status_txt.configure(text="Conectando...")
@@ -1015,7 +1170,9 @@ class ScriptBotStudioApp(ctk.CTk):
             self.status_dot.configure(text_color="#ef4444")
             self.status_txt.configure(text="Desconectado")
             if hasattr(self, "start_bot_btn") and self.start_bot_btn.winfo_exists():
-                self.start_bot_btn.configure(text="Iniciar Bot", fg_color="#10b981", hover_color="#059669", state="normal")
+                self.start_bot_btn.configure(text="Iniciar Bot", fg_color="#10b981", state="normal")
+                self.start_bot_btn.custom_normal_color = "#10b981"
+                self.start_bot_btn.custom_hover_color = "#059669"
             self.guilds_count_lbl.configure(text="Servidores: 0")
             self.vc_channel_lbl.configure(text="Canal de voz: Ninguno")
             self.update_queue_ui([])
@@ -1034,6 +1191,9 @@ class ScriptBotStudioApp(ctk.CTk):
                 self.lyr_next_lbl.configure(text="")
             self.current_song_lrc = []
             self.last_song_title = None
+            self.last_curr_line = ""
+            self.song_color_base = "#a5b4fc"
+            self.song_color_punch = "#f43f5e"
             return
             
         self.guilds_count_lbl.configure(text=f"Servidores: {len(self.bridge.guilds)}")
@@ -1053,8 +1213,11 @@ class ScriptBotStudioApp(ctk.CTk):
             # Buscar letra en segundo plano si cambió de canción
             if self.last_song_title != title:
                 self.last_song_title = title
-                # Resetear desfase de letras para la nueva canción
+                # Resetear desfase de letras y animaciones para la nueva canción
                 self.lyrics_offset = 0.0
+                self.last_curr_line = ""
+                self.song_color_base, self.song_color_punch = self.get_song_feeling_colors(title)
+                
                 if hasattr(self, "lbl_offset") and self.lbl_offset.winfo_exists():
                     self.lbl_offset.configure(text="Desfase: +0.0s")
                     
@@ -1079,12 +1242,19 @@ class ScriptBotStudioApp(ctk.CTk):
                 self.lyr_next_lbl.configure(text="")
             self.current_song_lrc = []
             self.last_song_title = None
+            self.last_curr_line = ""
+            self.song_color_base = "#a5b4fc"
+            self.song_color_punch = "#f43f5e"
             
         # Boton de Pausa / Reanudar
         if self.bridge.is_paused:
-            self.pause_btn.configure(text="▶ Reanudar", fg_color="#fbbf24", hover_color="#d97706")
+            self.pause_btn.configure(text="▶ Reanudar", fg_color="#fbbf24")
+            self.pause_btn.custom_normal_color = "#fbbf24"
+            self.pause_btn.custom_hover_color = "#d97706"
         else:
-            self.pause_btn.configure(text="⏸ Pausa", fg_color="#5850ec", hover_color="#4f46e5")
+            self.pause_btn.configure(text="⏸ Pausa", fg_color="#5850ec")
+            self.pause_btn.custom_normal_color = "#5850ec"
+            self.pause_btn.custom_hover_color = "#4f46e5"
             
         self.vol_slider.set(self.bridge.volume * 100)
         self.update_queue_ui(self.bridge.queue)
