@@ -2,21 +2,12 @@ import os
 import sys
 import subprocess
 
-def run_cmd(cmd):
-    print(f"Ejecutando: {cmd}")
-    res = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="ignore")
-    if res.returncode != 0:
-        print(f"Error al ejecutar: {res.stderr}")
-        return False
-    print(res.stdout)
-    return True
-
 def main():
     print("=== Compilacion de Linux usando Docker ===")
     
     # 1. Comprobar si docker esta ejecutandose
     try:
-        res = subprocess.run("docker info", shell=True, capture_output=True)
+        res = subprocess.run(["docker", "info"], capture_output=True)
         if res.returncode != 0:
             print("Error: Docker esta instalado pero no parece estar ejecutandose. Abre Docker Desktop e intentalo de nuevo.")
             sys.exit(1)
@@ -27,7 +18,7 @@ def main():
     # 2. Comandos que se ejecutaran dentro del contenedor Linux
     # Descargar ffmpeg para Linux si no esta, instalar dependencias y compilar
     container_commands = [
-        "apt-get update && apt-get install -y python3-tk wget xz-utils",
+        "apt-get update && apt-get install -y python3-tk wget xz-utils binutils",
         "if [ ! -f ffmpeg ]; then wget -qO ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz && tar -xf ffmpeg.tar.xz && find . -name ffmpeg -type f -executable -exec cp {} . \\; && rm -f ffmpeg.tar.xz && rm -rf ffmpeg-*-static; fi",
         "pip install --upgrade pip",
         "pip install -r requirements.txt pyinstaller",
@@ -64,21 +55,30 @@ chmod +x dist/install.sh""",
     ]
 
     joined_commands = " && ".join(container_commands)
-    # Ejecutar contenedor docker montando el directorio actual
+    
+    # 3. Argumentos de docker como lista para evitar problemas de escape de comillas
     cwd = os.getcwd()
-    docker_cmd = f'docker run --rm -v "{cwd}:/app" -w /app python:3.11-slim-bookworm /bin/bash -c "{joined_commands}"'
+    docker_args = [
+        "docker", "run", "--rm",
+        "-v", f"{cwd}:/app",
+        "-w", "/app",
+        "python:3.11-slim-bookworm",
+        "/bin/bash", "-c", joined_commands
+    ]
     
     print("Iniciando contenedor Docker (python:3.11-slim-bookworm)...")
     print("Esto descargara ffmpeg para Linux y compilara el portable y el instalador.")
-    success = run_cmd(docker_cmd)
+    print("Ejecutando proceso...")
     
-    if success:
+    res = subprocess.run(docker_args, capture_output=False)
+    
+    if res.returncode == 0:
         print("\n=== Compilacion de Linux Finalizada con Exito ===")
         print("Archivos creados en dist/:")
         print(" - dist/ScriptBot_Studio_Linux_Portable (Binario ejecutable unico)")
         print(" - dist/ScriptBot_Studio_Linux_Installer.tar.gz (Instalador tarball)")
     else:
-        print("\nOcurrio un error al compilar con Docker.")
+        print(f"\nOcurrio un error al compilar con Docker (Codigo de salida: {res.returncode}).")
 
 if __name__ == "__main__":
     main()
