@@ -42,6 +42,14 @@ def main():
     else:
         print("Advertencia: No se encontró ffmpeg.exe en el directorio raíz. No se incluirá en el portable.")
 
+    # 4.5. Copiar firebase_config.json al directorio dist si existe
+    firebase_src = "firebase_config.json"
+    firebase_dst = os.path.join(exe_dir, "firebase_config.json")
+    if os.path.exists(firebase_src):
+        print("Copiando firebase_config.json al directorio dist...")
+        shutil.copy2(firebase_src, firebase_dst)
+
+
     # 5. Crear ZIP Portable
     zip_path = os.path.join("dist", "ScriptBot_Studio_Portable.zip")
     print(f"Creando ZIP portable en {zip_path}...")
