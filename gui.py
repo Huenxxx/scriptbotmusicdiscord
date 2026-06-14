@@ -51,10 +51,15 @@ class BotBridge:
         self.logs_queue = queue.Queue()
         self.amplitude = 0.0
         self.voice_channels = []
+        self.recommendations = []
         self.state_updated = False
 
     def update_voice_channels(self, channels_list):
         self.voice_channels = channels_list
+        self.state_updated = True
+
+    def update_recommendations(self, recs_list):
+        self.recommendations = recs_list
         self.state_updated = True
 
     def update_amplitude(self, amp):
@@ -660,16 +665,33 @@ class ScriptBotStudioApp(ctk.CTk):
         p_title.pack(pady=(10, 5), anchor="w")
         
         # Buscador
-        search_frame = ctk.CTkFrame(player_frame, fg_color="transparent")
-        search_frame.pack(fill="x", pady=5)
+        self.search_frame = ctk.CTkFrame(player_frame, fg_color="transparent")
+        self.search_frame.pack(fill="x", pady=5)
         
-        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Escribe un título de canción o pega un enlace de YouTube...", height=38, fg_color="#090d16", border_color="#1e293b")
+        self.search_entry = ctk.CTkEntry(self.search_frame, placeholder_text="Escribe un título de canción o pega un enlace de YouTube...", height=38, fg_color="#090d16", border_color="#1e293b")
         self.search_entry.pack(side="left", fill="x", expand=True)
         self.search_entry.bind("<Return>", lambda e: self.gui_action_play())
+        self.search_entry.bind("<FocusIn>", lambda e: self.show_recommendations())
+        self.search_entry.bind("<FocusOut>", lambda e: self.on_search_focus_out(e))
         
-        play_btn = ctk.CTkButton(search_frame, text="Play", width=75, height=38, fg_color="#2563eb", hover_color="#1d4ed8", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), command=self.gui_action_play)
+        play_btn = ctk.CTkButton(self.search_frame, text="Play", width=75, height=38, fg_color="#2563eb", hover_color="#1d4ed8", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), command=self.gui_action_play)
         play_btn.pack(side="left", padx=(8, 0))
         self.apply_fade_hover(play_btn, "#2563eb", "#1d4ed8")
+        
+        # --- ZONA DE RECOMENDACIONES ---
+        # Inicialmente no se empaqueta, se muestra al enfocar el buscador
+        self.recs_container = ctk.CTkFrame(player_frame, fg_color="#090d16", border_color="#1e293b", border_width=1, corner_radius=8)
+        
+        recs_title = ctk.CTkLabel(self.recs_container, text="✨ Recomendaciones basadas en la reproducción actual:", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color="#3b82f6")
+        recs_title.pack(anchor="w", pady=(8, 4), padx=10)
+        
+        self.recs_buttons_frame = ctk.CTkFrame(self.recs_container, fg_color="transparent")
+        self.recs_buttons_frame.pack(fill="x", padx=5, pady=(0, 8))
+        
+        self.recs_empty_lbl = ctk.CTkLabel(self.recs_buttons_frame, text="Reproduce una canción para obtener recomendaciones", font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic"), text_color="#6b7280")
+        self.recs_empty_lbl.pack(anchor="w", padx=5, pady=5)
+        
+        self.last_rendered_recs = []
         
         # Ficha "Ahora sonando"
         self.now_playing_frame = ctk.CTkFrame(player_frame, fg_color="#090d16", height=115, corner_radius=8, border_color="#1e293b", border_width=1)
@@ -1201,6 +1223,7 @@ class ScriptBotStudioApp(ctk.CTk):
             return
             
         self.search_entry.delete(0, "end")
+        self.hide_recommendations()
         asyncio.run_coroutine_threadsafe(self.bridge.bot.gui_play(query), self.bridge.loop)
 
     def gui_action_skip(self):
@@ -1230,6 +1253,25 @@ class ScriptBotStudioApp(ctk.CTk):
         if self.bridge.status == "online" and self.bridge.bot:
             vol = float(value) / 100.0
             asyncio.run_coroutine_threadsafe(self.bridge.bot.gui_set_volume(vol), self.bridge.loop)
+
+    def gui_action_play_recommendation(self, url):
+        if self.bridge.status == "online" and self.bridge.bot:
+            self.search_entry.delete(0, "end")
+            self.search_entry.insert(0, url)
+            self.gui_action_play()
+
+    def show_recommendations(self):
+        if hasattr(self, "recs_container") and self.recs_container.winfo_exists():
+            if self.bridge.current_song:
+                self.recs_container.pack(fill="x", pady=(5, 5), after=self.search_frame)
+
+    def hide_recommendations(self):
+        if hasattr(self, "recs_container") and self.recs_container.winfo_exists():
+            self.recs_container.pack_forget()
+
+    def on_search_focus_out(self, event):
+        # Retraso para permitir que el click en los botones se registre antes de ocultar
+        self.after(250, self.hide_recommendations)
 
     # --- POLLING Y ACTUALIZACIONES DE UI ---
 
@@ -1364,6 +1406,14 @@ class ScriptBotStudioApp(ctk.CTk):
                 empty_lbl.pack(pady=10)
             self.last_rendered_channels = []
             
+            # Limpiar recomendaciones
+            if hasattr(self, "recs_buttons_frame") and self.recs_buttons_frame.winfo_exists():
+                for child in self.recs_buttons_frame.winfo_children():
+                    child.destroy()
+                empty_recs_lbl = ctk.CTkLabel(self.recs_buttons_frame, text="Reproduce una canción para obtener recomendaciones", font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic"), text_color="#6b7280")
+                empty_recs_lbl.pack(anchor="w", padx=5, pady=5)
+            self.last_rendered_recs = []
+            
             # Limpiar letra
             if hasattr(self, "lyrics_textbox") and self.lyrics_textbox.winfo_exists():
                 self.lyrics_textbox.configure(state="normal")
@@ -1469,6 +1519,45 @@ class ScriptBotStudioApp(ctk.CTk):
             self.pause_btn.configure(text="⏸ Pausa", fg_color="#5850ec")
             self.pause_btn.custom_normal_color = "#5850ec"
             self.pause_btn.custom_hover_color = "#4f46e5"
+            
+        # Actualizar recomendaciones en el reproductor
+        if hasattr(self, "recs_buttons_frame") and self.recs_buttons_frame.winfo_exists():
+            current_recs = self.bridge.recommendations
+            current_titles = [r["title"] for r in current_recs]
+            if current_titles != self.last_rendered_recs:
+                self.last_rendered_recs = current_titles
+                
+                # Limpiar frame de recomendaciones
+                for child in self.recs_buttons_frame.winfo_children():
+                    child.destroy()
+                    
+                if not current_recs:
+                    if self.bridge.current_song:
+                        lbl = ctk.CTkLabel(self.recs_buttons_frame, text="Buscando recomendaciones...", font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic"), text_color="#6b7280")
+                        lbl.pack(anchor="w", padx=5, pady=5)
+                    else:
+                        lbl = ctk.CTkLabel(self.recs_buttons_frame, text="Reproduce una canción para obtener recomendaciones", font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic"), text_color="#6b7280")
+                        lbl.pack(anchor="w", padx=5, pady=5)
+                else:
+                    for rec in current_recs:
+                        short_title = rec['title']
+                        if len(short_title) > 65:
+                            short_title = short_title[:62] + "..."
+                            
+                        btn = ctk.CTkButton(
+                            self.recs_buttons_frame,
+                            text=f"🎵 {short_title}",
+                            font=("Segoe UI", 11),
+                            anchor="w",
+                            fg_color="#0f172a",
+                            hover_color="#1e293b",
+                            height=28,
+                            corner_radius=4,
+                            border_color="#1e293b",
+                            border_width=1,
+                            command=lambda url=rec['url']: self.gui_action_play_recommendation(url)
+                        )
+                        btn.pack(fill="x", pady=2, padx=5)
             
         self.vol_slider.set(self.bridge.volume * 100)
         self.update_queue_ui(self.bridge.queue)

@@ -226,6 +226,7 @@ class DiscordMusicBot(commands.Bot):
             self.log("📭 La cola de reproducción está vacía.")
             self.current_track = None
             self.bridge.update_current_song(None)
+            self.bridge.update_recommendations([])
             if self.voice_client.is_playing():
                 self.voice_client.stop()
             return
@@ -233,6 +234,7 @@ class DiscordMusicBot(commands.Bot):
         self.current_track = self.queue.pop(0)
         self.bridge.update_queue([t['title'] for t in self.queue])
         self.bridge.update_current_song(self.current_track)
+        self.update_recommendations(self.current_track['title'])
         
         # Buscar ffmpeg.exe de manera robusta
         ffmpeg_candidates = [
@@ -474,6 +476,7 @@ class DiscordMusicBot(commands.Bot):
         """Detiene y limpia la cola desde la GUI."""
         self.queue.clear()
         self.bridge.update_queue([])
+        self.bridge.update_recommendations([])
         self.track_start_time = None
         self.track_paused_time = None
         self.total_paused_duration = 0
@@ -494,6 +497,7 @@ class DiscordMusicBot(commands.Bot):
             self.bridge.update_queue([])
             self.bridge.update_current_song(None)
             self.bridge.update_voice_channel(None)
+            self.bridge.update_recommendations([])
             self.log("👋 Desconectado del canal de voz desde la GUI.")
 
     async def gui_set_volume(self, vol_float):
@@ -521,3 +525,41 @@ class DiscordMusicBot(commands.Bot):
             await self.join_voice_channel(channel)
         else:
             self.log(f"⚠️ No se pudo encontrar el canal de voz con ID: {channel_id}")
+
+    def update_recommendations(self, song_title):
+        """Inicia la búsqueda de canciones recomendadas en segundo plano."""
+        asyncio.run_coroutine_threadsafe(self.async_fetch_recommendations(song_title), self.loop)
+
+    async def async_fetch_recommendations(self, song_title):
+        """Busca en YouTube canciones similares o del mismo artista en segundo plano."""
+        import re
+        # Limpiar el título de caracteres especiales y emojis
+        cleaned = re.sub(r'[\(\[][^\)\]]*[\)\]]', '', song_title)
+        cleaned = re.sub(r'[^\w\s\-\.]', '', cleaned)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        # Intentar buscar por artista si tiene formato "Artista - Cancion"
+        query = f"ytsearch6:{cleaned}"
+        if " - " in cleaned:
+            artist = cleaned.split(" - ")[0].strip()
+            query = f"ytsearch6:{artist} songs"
+            
+        try:
+            loop = self.loop or asyncio.get_event_loop()
+            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
+            recs = []
+            if data and 'entries' in data:
+                for entry in data['entries']:
+                    if entry:
+                        title = entry.get('title')
+                        # Excluir el video actual si coincide mucho con la búsqueda original
+                        if cleaned.lower() not in title.lower() or "video" in title.lower() or "music" in title.lower():
+                            recs.append({
+                                'title': title,
+                                'url': entry.get('webpage_url')
+                            })
+            # Actualizar recomendaciones en el bridge
+            self.bridge.update_recommendations(recs[:4])
+        except Exception as e:
+            self.log(f"⚠️ Error al obtener recomendaciones: {str(e)}")
+            self.bridge.update_recommendations([])
