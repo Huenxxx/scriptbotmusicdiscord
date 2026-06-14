@@ -24,12 +24,22 @@ def main():
     # --noconfirm para sobrescribir sin preguntar
     # --onefile para empaquetar todo en un único .exe
     # --add-data para incrustar ffmpeg.exe si está presente
+    
+    # Buscar la carpeta bin de discord.py para incrustar libopus en Windows
+    import discord
+    discord_dir = os.path.dirname(discord.__file__)
+    discord_bin = os.path.join(discord_dir, "bin")
+    extra_args = ""
+    if os.path.exists(discord_bin):
+        print(f"Detectada carpeta binaria de discord.py en: {discord_bin}")
+        extra_args += f' --add-data "{discord_bin}{os.path.sep}*;discord/bin"'
+
     if os.path.exists("ffmpeg.exe"):
         print("Incrustando ffmpeg.exe dentro del ejecutable portable...")
-        run_cmd('pyinstaller --name="ScriptBot Studio" --onefile --windowed --add-data "ffmpeg.exe;." --noconfirm main.py')
+        run_cmd(f'pyinstaller --name="ScriptBot Studio" --onefile --windowed --add-data "ffmpeg.exe;."{extra_args} --noconfirm main.py')
     else:
         print("Advertencia: No se encontró ffmpeg.exe. Compilando sin incrustar ffmpeg...")
-        run_cmd('pyinstaller --name="ScriptBot Studio" --onefile --windowed --noconfirm main.py')
+        run_cmd(f'pyinstaller --name="ScriptBot Studio" --onefile --windowed{extra_args} --noconfirm main.py')
 
     # 3. Verificar que el ejecutable existe
     exe_path = os.path.join("dist", "ScriptBot Studio.exe")
@@ -41,6 +51,14 @@ def main():
     portable_path = os.path.join("dist", "ScriptBot_Studio_Windows_Portable.exe")
     print(f"Creando ejecutable portable renombrado en {portable_path}...")
     shutil.copy2(exe_path, portable_path)
+
+    # 4b. Copiar firebase_config.json a dist si existe en la raíz
+    config_src = "firebase_config.json"
+    config_dst = os.path.join("dist", "firebase_config.json")
+    if os.path.exists(config_src):
+        print(f"Copiando {config_src} a {config_dst}...")
+        shutil.copy2(config_src, config_dst)
+
 
     # 5. Generar Script de Inno Setup para instalar el único .exe
     iss_content = """[Setup]

@@ -3,7 +3,15 @@ import sys
 
 def get_app_dir():
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        if sys.platform == 'win32':
+            app_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'ScriptBot Studio')
+        else:
+            app_dir = os.path.expanduser('~/.config/scriptbot-studio')
+        try:
+            os.makedirs(app_dir, exist_ok=True)
+        except Exception:
+            pass
+        return app_dir
     else:
         return os.path.dirname(os.path.abspath(__file__))
 import queue
@@ -41,8 +49,12 @@ class BotBridge:
         self.volume = 0.5
         self.is_paused = False
         self.logs_queue = queue.Queue()
-        self.state_updated = False
         self.amplitude = 0.0
+        self.voice_channels = []
+
+    def update_voice_channels(self, channels_list):
+        self.voice_channels = channels_list
+        self.state_updated = True
 
     def update_amplitude(self, amp):
         self.amplitude = amp
@@ -589,6 +601,26 @@ class ScriptBotStudioApp(ctk.CTk):
         
         self.vc_channel_lbl = ctk.CTkLabel(bot_sidebar, text="Canal de voz: Ninguno", font=FONT_SUBTITLE, text_color="#94a3b8")
         self.vc_channel_lbl.grid(row=5, column=0, padx=20, pady=5, sticky="w")
+        
+        # Lista de canales de voz interactiva
+        self.channels_scroll_frame = ctk.CTkScrollableFrame(
+            bot_sidebar,
+            label_text="Unirse a Canal",
+            label_font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            label_text_color="#94a3b8",
+            label_fg_color="transparent",
+            fg_color="transparent",
+            border_color="#1e293b",
+            border_width=1,
+            corner_radius=6,
+            height=150
+        )
+        self.channels_scroll_frame.grid(row=6, column=0, padx=20, pady=(10, 10), sticky="nsew")
+        self.last_rendered_channels = []
+        
+        # Texto indicador inicial
+        empty_lbl = ctk.CTkLabel(self.channels_scroll_frame, text="Inicia el bot para ver canales", font=("Segoe UI", 11), text_color="#6b7280")
+        empty_lbl.pack(pady=10)
         
         # Controles Encendido / Apagado
         power_frame = ctk.CTkFrame(bot_sidebar, fg_color="transparent")
@@ -1189,6 +1221,10 @@ class ScriptBotStudioApp(ctk.CTk):
         if self.bridge.status == "online" and self.bridge.bot:
             asyncio.run_coroutine_threadsafe(self.bridge.bot.gui_disconnect(), self.bridge.loop)
 
+    def gui_action_join_channel(self, channel_id):
+        if self.bridge.status == "online" and self.bridge.bot:
+            asyncio.run_coroutine_threadsafe(self.bridge.bot.gui_join_channel(channel_id), self.bridge.loop)
+
     def gui_action_volume(self, value):
         if self.bridge.status == "online" and self.bridge.bot:
             vol = float(value) / 100.0
@@ -1319,6 +1355,14 @@ class ScriptBotStudioApp(ctk.CTk):
             self.song_title_lbl.configure(text="Ninguna canción reproduciéndose")
             self.song_meta_lbl.configure(text="-")
             
+            # Limpiar lista de canales
+            if hasattr(self, "channels_scroll_frame") and self.channels_scroll_frame.winfo_exists():
+                for child in self.channels_scroll_frame.winfo_children():
+                    child.destroy()
+                empty_lbl = ctk.CTkLabel(self.channels_scroll_frame, text="Inicia el bot para ver canales", font=("Segoe UI", 11), text_color="#6b7280")
+                empty_lbl.pack(pady=10)
+            self.last_rendered_channels = []
+            
             # Limpiar letra
             if hasattr(self, "lyrics_textbox") and self.lyrics_textbox.winfo_exists():
                 self.lyrics_textbox.configure(state="normal")
@@ -1340,6 +1384,35 @@ class ScriptBotStudioApp(ctk.CTk):
         
         vc = self.bridge.voice_channel
         self.vc_channel_lbl.configure(text=f"Canal de voz: {vc or 'Ninguno'}")
+        
+        # Actualizar lista de canales de voz interactiva en la sidebar
+        if hasattr(self, "channels_scroll_frame") and self.channels_scroll_frame.winfo_exists():
+            current_channels = self.bridge.voice_channels
+            current_ids = [c["id"] for c in current_channels]
+            if current_ids != self.last_rendered_channels:
+                self.last_rendered_channels = current_ids
+                # Limpiar frame
+                for child in self.channels_scroll_frame.winfo_children():
+                    child.destroy()
+                
+                # Reconstruir botones de canales
+                if not current_channels:
+                    empty_lbl = ctk.CTkLabel(self.channels_scroll_frame, text="No hay canales disponibles", font=("Segoe UI", 11), text_color="#6b7280")
+                    empty_lbl.pack(pady=10)
+                else:
+                    for channel in current_channels:
+                        text = f"{channel['guild_name']} - {channel['name']}"
+                        btn = ctk.CTkButton(
+                            self.channels_scroll_frame,
+                            text=text,
+                            font=("Segoe UI", 11),
+                            anchor="w",
+                            fg_color="#1e293b",
+                            hover_color="#334155",
+                            height=26,
+                            command=lambda cid=channel["id"]: self.gui_action_join_channel(cid)
+                        )
+                        btn.pack(fill="x", pady=2, padx=2)
         
         # Canción actual sonando y buscador de letras
         song = self.bridge.current_song

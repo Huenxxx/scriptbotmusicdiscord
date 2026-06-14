@@ -6,7 +6,15 @@ import requests
 # Ruta del archivo de configuración de Firebase en el directorio de la aplicación
 def get_app_dir():
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        if sys.platform == 'win32':
+            app_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'ScriptBot Studio')
+        else:
+            app_dir = os.path.expanduser('~/.config/scriptbot-studio')
+        try:
+            os.makedirs(app_dir, exist_ok=True)
+        except Exception:
+            pass
+        return app_dir
     else:
         return os.path.dirname(os.path.abspath(__file__))
 
@@ -14,13 +22,26 @@ CONFIG_FILE = os.path.join(get_app_dir(), "firebase_config.json")
 FIREBASE_CONFIG = None
 CURRENT_ID_TOKEN = None
 
+# Configuración por defecto (Firebase de ScriptBot Studio)
+DEFAULT_CONFIG = {
+    "apiKey": "AIzaSyDtr1hsDmD8nfD18nLmZuF7TUDQDqn_KOs",
+    "projectId": "scriptbotstudio-9156c",
+    "databaseUrl": "https://scriptbotstudio-9156c-default-rtdb.europe-west1.firebasedatabase.app"
+}
+
+def is_config_placeholder(config):
+    if not config:
+        return True
+    return (config.get("apiKey") == "TU_FIREBASE_API_KEY" or 
+            config.get("projectId") == "TU_PROJECT_ID")
+
 def load_firebase_config():
     global FIREBASE_CONFIG
     if FIREBASE_CONFIG is not None:
         return FIREBASE_CONFIG
         
     if not os.path.exists(CONFIG_FILE):
-        # Crear plantilla de configuración por defecto
+        # Crear plantilla de configuración por defecto para que el usuario sepa que puede personalizarla
         template = {
             "apiKey": "TU_FIREBASE_API_KEY",
             "projectId": "TU_PROJECT_ID",
@@ -31,22 +52,22 @@ def load_firebase_config():
                 json.dump(template, f, ensure_ascii=False, indent=4)
         except Exception as e:
             print(f"Error al crear plantilla de Firebase: {e}")
-        FIREBASE_CONFIG = template
-        return template
+        # Retornar la configuración por defecto incrustada
+        FIREBASE_CONFIG = DEFAULT_CONFIG
+        return FIREBASE_CONFIG
         
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            FIREBASE_CONFIG = json.load(f)
+            loaded_config = json.load(f)
+            if is_config_placeholder(loaded_config):
+                FIREBASE_CONFIG = DEFAULT_CONFIG
+            else:
+                FIREBASE_CONFIG = loaded_config
             return FIREBASE_CONFIG
     except Exception as e:
         print(f"Error al cargar firebase_config.json: {e}")
-        return None
-
-def is_config_placeholder(config):
-    if not config:
-        return True
-    return (config.get("apiKey") == "TU_FIREBASE_API_KEY" or 
-            config.get("projectId") == "TU_PROJECT_ID")
+        FIREBASE_CONFIG = DEFAULT_CONFIG
+        return FIREBASE_CONFIG
 
 def init_db():
     """Inicializa Firebase cargando o creando la plantilla de configuración."""

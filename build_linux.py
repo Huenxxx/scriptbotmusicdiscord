@@ -24,6 +24,7 @@ def main():
         "pip install -r requirements.txt pyinstaller",
         "pyinstaller --name=\"ScriptBot Studio\" --onefile --windowed --add-data \"ffmpeg:.\" --noconfirm main.py",
         "cp \"dist/ScriptBot Studio\" \"dist/ScriptBot_Studio_Linux_Portable\"",
+        "if [ -f firebase_config.json ]; then cp firebase_config.json dist/; fi",
         # Crear script install.sh
         """cat << 'EOF' > dist/install.sh
 #!/bin/bash

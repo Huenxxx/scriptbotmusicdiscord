@@ -7,6 +7,7 @@ import sys
 import logging
 import struct
 import math
+import nacl
 
 # Configurar logs
 logger = logging.getLogger("ScriptBot")
@@ -39,6 +40,17 @@ class PunchDetectingAudioSource(discord.AudioSource):
     def __init__(self, original, bridge):
         self.original = original
         self.bridge = bridge
+
+    @property
+    def volume(self):
+        if hasattr(self.original, 'volume'):
+            return self.original.volume
+        return 1.0
+
+    @volume.setter
+    def volume(self, value):
+        if hasattr(self.original, 'volume'):
+            self.original.volume = value
 
     def read(self):
         data = self.original.read()
@@ -101,10 +113,43 @@ class DiscordMusicBot(commands.Bot):
         self.log(f"🟢 Bot conectado en Discord como: {self.user.name}#{self.user.discriminator}")
         self.bridge.update_status("online")
         self.bridge.update_guilds([{"id": g.id, "name": g.name} for g in self.guilds])
+        self.bridge.update_voice_channels(self.get_all_voice_channels())
 
     async def on_disconnect(self):
         self.log("🔴 Bot desconectado de Discord.")
         self.bridge.update_status("offline")
+        self.bridge.update_voice_channels([])
+
+    def get_all_voice_channels(self):
+        """Obtiene la lista de todos los canales de voz a los que el bot puede conectarse."""
+        channels = []
+        for guild in self.guilds:
+            for channel in guild.voice_channels:
+                permissions = channel.permissions_for(guild.me)
+                if permissions.connect:
+                    channels.append({
+                        "id": str(channel.id),
+                        "name": channel.name,
+                        "guild_id": str(guild.id),
+                        "guild_name": guild.name
+                    })
+        return channels
+
+    async def on_guild_join(self, guild):
+        self.bridge.update_guilds([{"id": g.id, "name": g.name} for g in self.guilds])
+        self.bridge.update_voice_channels(self.get_all_voice_channels())
+
+    async def on_guild_remove(self, guild):
+        self.bridge.update_guilds([{"id": g.id, "name": g.name} for g in self.guilds])
+        self.bridge.update_voice_channels(self.get_all_voice_channels())
+
+    async def on_guild_channel_create(self, channel):
+        if isinstance(channel, discord.VoiceChannel):
+            self.bridge.update_voice_channels(self.get_all_voice_channels())
+
+    async def on_guild_channel_delete(self, channel):
+        if isinstance(channel, discord.VoiceChannel):
+            self.bridge.update_voice_channels(self.get_all_voice_channels())
 
     async def get_stream_source(self, query):
         """Extrae la informacion del stream de audio usando yt-dlp."""
@@ -230,7 +275,8 @@ class DiscordMusicBot(commands.Bot):
             self.voice_client.play(punch_source, after=after_playing)
             
         except Exception as e:
-            self.log(f"⚠️ Error al iniciar reproducción: {str(e)}")
+            import traceback
+            self.log(f"⚠️ Error al iniciar reproducción: {str(e)}\n{traceback.format_exc()}")
             await self.play_next()
 
     async def play_song_query(self, query, voice_channel=None, requester="Sistema"):
@@ -467,3 +513,11 @@ class DiscordMusicBot(commands.Bot):
         if self.voice_client.is_paused():
             return self.track_paused_time - self.track_start_time - self.total_paused_duration
         return time.time() - self.track_start_time - self.total_paused_duration
+
+    async def gui_join_channel(self, channel_id):
+        """Une al bot a un canal de voz específico desde la GUI."""
+        channel = self.get_channel(int(channel_id))
+        if channel:
+            await self.join_voice_channel(channel)
+        else:
+            self.log(f"⚠️ No se pudo encontrar el canal de voz con ID: {channel_id}")

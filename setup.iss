@@ -7,13 +7,13 @@ UninstallDisplayIcon={app}\ScriptBot Studio.exe
 Compression=lzma2
 SolidCompression=yes
 OutputDir=dist
-OutputBaseFilename=ScriptBot_Studio_Setup
+OutputBaseFilename=ScriptBot_Studio_Windows_Setup
 DisableWelcomePage=no
 DisableDirPage=no
 DisableProgramGroupPage=yes
 
 [Files]
-Source: "dist\ScriptBot Studio\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "dist\ScriptBot Studio.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\ScriptBot Studio"; Filename: "{app}\ScriptBot Studio.exe"
