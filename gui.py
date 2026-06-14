@@ -51,6 +51,7 @@ class BotBridge:
         self.logs_queue = queue.Queue()
         self.amplitude = 0.0
         self.voice_channels = []
+        self.state_updated = False
 
     def update_voice_channels(self, channels_list):
         self.voice_channels = channels_list
