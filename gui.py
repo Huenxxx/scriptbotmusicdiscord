@@ -216,6 +216,7 @@ class ScriptBotStudioApp(ctk.CTk):
         self.lyrics_hue = 0.0
         self.in_lyric_transition = False
         self.last_curr_line = ""
+        self.recs_page = 0
         
         # Inicializar base de datos
         database.init_db()
@@ -686,12 +687,14 @@ class ScriptBotStudioApp(ctk.CTk):
         recs_title.pack(anchor="w", pady=(8, 4), padx=10)
         
         self.recs_buttons_frame = ctk.CTkFrame(self.recs_container, fg_color="transparent")
-        self.recs_buttons_frame.pack(fill="x", padx=5, pady=(0, 8))
+        self.recs_buttons_frame.pack(fill="x", padx=5, pady=(0, 4))
+        
+        self.recs_pagination_frame = ctk.CTkFrame(self.recs_container, fg_color="transparent")
         
         self.recs_empty_lbl = ctk.CTkLabel(self.recs_buttons_frame, text="Reproduce una canción para obtener recomendaciones", font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic"), text_color="#6b7280")
         self.recs_empty_lbl.pack(anchor="w", padx=5, pady=5)
         
-        self.last_rendered_recs = []
+        self.last_rendered_recs_key = ([], 0)
         
         # Ficha "Ahora sonando"
         self.now_playing_frame = ctk.CTkFrame(player_frame, fg_color="#090d16", height=115, corner_radius=8, border_color="#1e293b", border_width=1)
@@ -1273,6 +1276,15 @@ class ScriptBotStudioApp(ctk.CTk):
         # Retraso para permitir que el click en los botones se registre antes de ocultar
         self.after(250, self.hide_recommendations)
 
+    def change_recs_page(self, delta):
+        import math
+        total_recs = len(self.bridge.recommendations)
+        total_pages = math.ceil(total_recs / 8)
+        new_page = self.recs_page + delta
+        if 0 <= new_page < total_pages:
+            self.recs_page = new_page
+            self.update_bot_ui_state()
+
     # --- POLLING Y ACTUALIZACIONES DE UI ---
 
     def poll_bot_updates(self):
@@ -1412,7 +1424,9 @@ class ScriptBotStudioApp(ctk.CTk):
                     child.destroy()
                 empty_recs_lbl = ctk.CTkLabel(self.recs_buttons_frame, text="Reproduce una canción para obtener recomendaciones", font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic"), text_color="#6b7280")
                 empty_recs_lbl.pack(anchor="w", padx=5, pady=5)
-            self.last_rendered_recs = []
+            if hasattr(self, "recs_pagination_frame") and self.recs_pagination_frame.winfo_exists():
+                self.recs_pagination_frame.pack_forget()
+            self.last_rendered_recs_key = ([], 0)
             
             # Limpiar letra
             if hasattr(self, "lyrics_textbox") and self.lyrics_textbox.winfo_exists():
@@ -1477,6 +1491,7 @@ class ScriptBotStudioApp(ctk.CTk):
             # Buscar letra en segundo plano si cambió de canción
             if self.last_song_title != title:
                 self.last_song_title = title
+                self.recs_page = 0
                 # Resetear desfase de letras y animaciones para la nueva canción
                 self.lyrics_offset = 0.0
                 self.last_curr_line = ""
@@ -1524,12 +1539,17 @@ class ScriptBotStudioApp(ctk.CTk):
         if hasattr(self, "recs_buttons_frame") and self.recs_buttons_frame.winfo_exists():
             current_recs = self.bridge.recommendations
             current_titles = [r["title"] for r in current_recs]
-            if current_titles != self.last_rendered_recs:
-                self.last_rendered_recs = current_titles
+            recs_key = (current_titles, getattr(self, "recs_page", 0))
+            if recs_key != getattr(self, "last_rendered_recs_key", ([], 0)):
+                self.last_rendered_recs_key = recs_key
                 
                 # Limpiar frame de recomendaciones
                 for child in self.recs_buttons_frame.winfo_children():
                     child.destroy()
+                # Limpiar frame de paginación
+                if hasattr(self, "recs_pagination_frame") and self.recs_pagination_frame.winfo_exists():
+                    for child in self.recs_pagination_frame.winfo_children():
+                        child.destroy()
                     
                 if not current_recs:
                     if self.bridge.current_song:
@@ -1538,8 +1558,23 @@ class ScriptBotStudioApp(ctk.CTk):
                     else:
                         lbl = ctk.CTkLabel(self.recs_buttons_frame, text="Reproduce una canción para obtener recomendaciones", font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic"), text_color="#6b7280")
                         lbl.pack(anchor="w", padx=5, pady=5)
+                    if hasattr(self, "recs_pagination_frame") and self.recs_pagination_frame.winfo_exists():
+                        self.recs_pagination_frame.pack_forget()
                 else:
-                    for rec in current_recs:
+                    import math
+                    total_recs = len(current_recs)
+                    page_size = 8
+                    total_pages = math.ceil(total_recs / page_size)
+                    
+                    # Asegurar que la página esté en el rango correcto
+                    if self.recs_page >= total_pages:
+                        self.recs_page = 0
+                        
+                    start_idx = self.recs_page * page_size
+                    end_idx = start_idx + page_size
+                    page_recs = current_recs[start_idx:end_idx]
+                    
+                    for rec in page_recs:
                         short_title = rec['title']
                         if len(short_title) > 65:
                             short_title = short_title[:62] + "..."
@@ -1551,13 +1586,57 @@ class ScriptBotStudioApp(ctk.CTk):
                             anchor="w",
                             fg_color="#0f172a",
                             hover_color="#1e293b",
-                            height=28,
+                            height=26,
                             corner_radius=4,
                             border_color="#1e293b",
                             border_width=1,
                             command=lambda url=rec['url']: self.gui_action_play_recommendation(url)
                         )
-                        btn.pack(fill="x", pady=2, padx=5)
+                        btn.pack(fill="x", pady=1, padx=5)
+                        
+                    # Controles de paginación
+                    if total_recs > page_size and hasattr(self, "recs_pagination_frame") and self.recs_pagination_frame.winfo_exists():
+                        self.recs_pagination_frame.pack(fill="x", padx=10, pady=(6, 4))
+                        
+                        # Botón Anterior
+                        btn_prev = ctk.CTkButton(
+                            self.recs_pagination_frame,
+                            text="◀ Anterior",
+                            font=("Segoe UI", 10),
+                            width=75,
+                            height=24,
+                            fg_color="#1e293b" if self.recs_page > 0 else "#090d16",
+                            hover_color="#334155",
+                            state="normal" if self.recs_page > 0 else "disabled",
+                            command=lambda: self.change_recs_page(-1)
+                        )
+                        btn_prev.pack(side="left", padx=5)
+                        
+                        # Etiqueta de Página
+                        lbl_page = ctk.CTkLabel(
+                            self.recs_pagination_frame,
+                            text=f"Página {self.recs_page + 1} de {total_pages}",
+                            font=("Segoe UI", 10, "bold"),
+                            text_color="#94a3b8"
+                        )
+                        lbl_page.pack(side="left", expand=True)
+                        
+                        # Botón Siguiente
+                        btn_next = ctk.CTkButton(
+                            self.recs_pagination_frame,
+                            text="Siguiente ▶",
+                            font=("Segoe UI", 10),
+                            width=75,
+                            height=24,
+                            fg_color="#1e293b" if end_idx < total_recs else "#090d16",
+                            hover_color="#334155",
+                            state="normal" if end_idx < total_recs else "disabled",
+                            command=lambda: self.change_recs_page(1)
+                        )
+                        btn_next.pack(side="right", padx=5)
+                    else:
+                        if hasattr(self, "recs_pagination_frame") and self.recs_pagination_frame.winfo_exists():
+                            self.recs_pagination_frame.pack_forget()
             
         self.vol_slider.set(self.bridge.volume * 100)
         self.update_queue_ui(self.bridge.queue)

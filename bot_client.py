@@ -78,6 +78,20 @@ class PunchDetectingAudioSource(discord.AudioSource):
     def is_opus(self):
         return self.original.is_opus()
 
+def get_bot_app_dir():
+    if getattr(sys, 'frozen', False):
+        if sys.platform == 'win32':
+            app_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'ScriptBot Studio')
+        else:
+            app_dir = os.path.expanduser('~/.config/scriptbot-studio')
+        try:
+            os.makedirs(app_dir, exist_ok=True)
+        except Exception:
+            pass
+        return app_dir
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
+
 class DiscordMusicBot(commands.Bot):
     def __init__(self, token, prefix, bridge):
         intents = discord.Intents.default()
@@ -103,6 +117,55 @@ class DiscordMusicBot(commands.Bot):
         self.bridge.bot = self
         
         self.add_commands()
+        self.ffmpeg_log_file = None
+        self.load_opus_lib()
+
+    def load_opus_lib(self):
+        """Carga de manera robusta la biblioteca Opus en entornos de producción y desarrollo."""
+        if discord.opus.is_loaded():
+            self.log("ℹ️ La biblioteca Opus ya está cargada.")
+            return True
+            
+        candidates = []
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            base_dir = sys._MEIPASS
+            candidates.extend([
+                os.path.join(base_dir, 'discord', 'bin', 'libopus-0.x64.dll'),
+                os.path.join(base_dir, 'discord', 'bin', 'libopus-0.dll'),
+                os.path.join(base_dir, 'discord', 'bin', 'libopus-0.x86.dll'),
+                os.path.join(base_dir, 'libopus-0.x64.dll'),
+                os.path.join(base_dir, 'libopus-0.dll'),
+                os.path.join(base_dir, 'libopus-0.x86.dll'),
+            ])
+            
+        discord_dir = os.path.dirname(discord.__file__)
+        candidates.extend([
+            os.path.join(discord_dir, 'bin', 'libopus-0.x64.dll'),
+            os.path.join(discord_dir, 'bin', 'libopus-0.dll'),
+            os.path.join(discord_dir, 'bin', 'libopus-0.x86.dll'),
+            'libopus-0.x64.dll',
+            'libopus-0.dll',
+            'libopus-0.x86.dll',
+        ])
+        
+        for path in candidates:
+            if os.path.exists(path):
+                try:
+                    discord.opus.load_opus(path)
+                    self.log(f"✅ Biblioteca Opus cargada correctamente desde: {path}")
+                    return True
+                except Exception as e:
+                    self.log(f"⚠️ Error al cargar Opus desde {path}: {e}")
+                    
+        try:
+            discord.opus.load_opus('opus')
+            self.log("✅ Biblioteca Opus cargada usando la búsqueda predeterminada del sistema.")
+            return True
+        except Exception:
+            pass
+            
+        self.log("⚠️ No se pudo encontrar ni cargar la biblioteca Opus. La reproducción de voz podría fallar.")
+        return discord.opus.is_loaded()
 
     def log(self, message):
         """Registra un mensaje tanto en consola como en el bridge para la GUI."""
@@ -251,13 +314,26 @@ class DiscordMusicBot(commands.Bot):
                 ffmpeg_path = candidate
                 break
             
-        self.log(f"▶️ Reproduciendo ahora: {self.current_track['title']}")
-        
+        # Cerrar log anterior si existe
+        if hasattr(self, 'ffmpeg_log_file') and self.ffmpeg_log_file:
+            try:
+                self.ffmpeg_log_file.close()
+            except Exception:
+                pass
+            self.ffmpeg_log_file = None
+
         try:
+            log_dir = get_bot_app_dir()
+            ffmpeg_log_path = os.path.join(log_dir, "ffmpeg_error.log")
+            
+            # Abrir archivo en modo escritura
+            self.ffmpeg_log_file = open(ffmpeg_log_path, "w", encoding="utf-8", errors="ignore")
+            self.log(f"📝 Redireccionando salida de error de FFmpeg a: {ffmpeg_log_path}")
+            
             if self.current_track.get('is_local'):
-                source = discord.FFmpegPCMAudio(self.current_track['url'], executable=ffmpeg_path)
+                source = discord.FFmpegPCMAudio(self.current_track['url'], executable=ffmpeg_path, stderr=self.ffmpeg_log_file)
             else:
-                source = discord.FFmpegPCMAudio(self.current_track['url'], executable=ffmpeg_path, **FFMPEG_OPTIONS)
+                source = discord.FFmpegPCMAudio(self.current_track['url'], executable=ffmpeg_path, stderr=self.ffmpeg_log_file, **FFMPEG_OPTIONS)
                 
             volume_source = discord.PCMVolumeTransformer(source, volume=self.volume)
             punch_source = PunchDetectingAudioSource(volume_source, self.bridge)
@@ -270,6 +346,13 @@ class DiscordMusicBot(commands.Bot):
             def after_playing(error):
                 if error:
                     self.log(f"⚠️ Error durante la reproducción: {error}")
+                # Cerrar archivo de log de ffmpeg
+                try:
+                    if hasattr(self, 'ffmpeg_log_file') and self.ffmpeg_log_file:
+                        self.ffmpeg_log_file.close()
+                        self.ffmpeg_log_file = None
+                except Exception:
+                    pass
                 # Resetear amplitud al finalizar pista
                 self.bridge.update_amplitude(0.0)
                 asyncio.run_coroutine_threadsafe(self.play_next(), self.loop)
@@ -279,6 +362,12 @@ class DiscordMusicBot(commands.Bot):
         except Exception as e:
             import traceback
             self.log(f"⚠️ Error al iniciar reproducción: {str(e)}\n{traceback.format_exc()}")
+            try:
+                if hasattr(self, 'ffmpeg_log_file') and self.ffmpeg_log_file:
+                    self.ffmpeg_log_file.close()
+                    self.ffmpeg_log_file = None
+            except Exception:
+                pass
             await self.play_next()
 
     async def play_song_query(self, query, voice_channel=None, requester="Sistema"):
@@ -538,12 +627,24 @@ class DiscordMusicBot(commands.Bot):
         cleaned = re.sub(r'[^\w\s\-\.]', '', cleaned)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         
-        # Intentar buscar por artista si tiene formato "Artista - Cancion"
-        query = f"ytsearch6:{cleaned}"
+        # Intentar buscar por artista o canciones relacionadas
+        # Formatos comunes: "Artista - Cancion", "Artista - Cancion (Video)", "Cancion by Artista", "Cancion ft Artista"
+        query = f"ytsearch25:{cleaned} related"
+        
+        # 1. Buscar por separador " - "
         if " - " in cleaned:
-            artist = cleaned.split(" - ")[0].strip()
-            query = f"ytsearch6:{artist} songs"
-            
+            parts = cleaned.split(" - ")
+            artist = parts[0].strip()
+            if artist and len(artist) < 45:
+                query = f"ytsearch25:{artist} songs"
+        # 2. Buscar por " by "
+        elif " by " in cleaned.lower():
+            parts = re.split(r'\s+by\s+', cleaned, flags=re.IGNORECASE)
+            if len(parts) > 1:
+                artist = parts[1].strip()
+                if artist and len(artist) < 45:
+                    query = f"ytsearch25:{artist} songs"
+                    
         try:
             loop = self.loop or asyncio.get_event_loop()
             data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
@@ -552,14 +653,16 @@ class DiscordMusicBot(commands.Bot):
                 for entry in data['entries']:
                     if entry:
                         title = entry.get('title')
-                        # Excluir el video actual si coincide mucho con la búsqueda original
-                        if cleaned.lower() not in title.lower() or "video" in title.lower() or "music" in title.lower():
+                        if title:
+                            # Excluir si es exactamente el mismo video por título
+                            if cleaned.lower() == title.lower():
+                                continue
                             recs.append({
                                 'title': title,
                                 'url': entry.get('webpage_url')
                             })
-            # Actualizar recomendaciones en el bridge
-            self.bridge.update_recommendations(recs[:4])
+            # Actualizar recomendaciones en el bridge (enviamos hasta 24 resultados)
+            self.bridge.update_recommendations(recs[:24])
         except Exception as e:
             self.log(f"⚠️ Error al obtener recomendaciones: {str(e)}")
             self.bridge.update_recommendations([])
