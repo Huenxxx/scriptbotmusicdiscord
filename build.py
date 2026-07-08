@@ -92,24 +92,32 @@ Name: "{userdesktop}\\ScriptBot Studio"; Filename: "{app}\\ScriptBot Studio.exe"
         os.path.expandvars(r"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"),
         r"C:\Users\huenx\AppData\Local\Programs\Inno Setup 6\ISCC.exe",
         r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-        "ISCC.exe"
     ]
+    # También buscar en el PATH del sistema
+    iscc_in_path = shutil.which("ISCC.exe")
+    if iscc_in_path:
+        iscc_paths.append(iscc_in_path)
+
     iscc_compiled = False
     for path in iscc_paths:
-        if path == "ISCC.exe" or os.path.exists(path):
+        if os.path.exists(path):
             try:
                 print(f"Compilando setup.exe usando: {path}...")
-                run_cmd(f'"{path}" setup.iss')
-                iscc_compiled = True
-                break
+                res = subprocess.run(f'"{path}" setup.iss', shell=True, capture_output=True, text=True, encoding="utf-8", errors="ignore")
+                if res.returncode == 0:
+                    print(res.stdout)
+                    iscc_compiled = True
+                    break
+                else:
+                    print(f"Fallo al compilar con {path}: {res.stderr}")
             except Exception as e:
                 print(f"Fallo al compilar con {path}: {e}")
 
     if iscc_compiled:
         print("Setup.exe creado con éxito.")
     else:
-        print("Error: No se pudo localizar ISCC.exe para compilar el instalador.")
-        sys.exit(1)
+        print("Advertencia: No se pudo localizar o ejecutar ISCC.exe. Compilación del instalador de setup omitida.")
+        print("El ejecutable portable ya está listo en 'dist/ScriptBot_Studio_Windows_Portable.exe'.")
 
 if __name__ == "__main__":
     main()

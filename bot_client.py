@@ -27,10 +27,14 @@ YTDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
+    # Optimizaciones de velocidad
+    'youtube_include_dash_manifest': False,
+    'youtube_include_hls_manifest': False,
+    'check_formats': 'skip',
 }
 
 FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 32768 -analyzeduration 0 -flags low_delay',
     'options': '-vn',
 }
 
@@ -225,7 +229,8 @@ class DiscordMusicBot(commands.Bot):
                 'duration': 0, # Desconocido o calculado
                 'webpage_url': '',
                 'thumbnail': '',
-                'is_local': True
+                'is_local': True,
+                'http_headers': {}
             }
             
         # Si es un nombre en own_songs sin ruta completa
@@ -238,13 +243,40 @@ class DiscordMusicBot(commands.Bot):
                 'duration': 0,
                 'webpage_url': '',
                 'thumbnail': '',
-                'is_local': True
+                'is_local': True,
+                'http_headers': {}
             }
             
-        self.log(f"🔍 Buscando en YouTube: {query}")
         loop = self.loop or asyncio.get_event_loop()
+        is_url = query.startswith("http://") or query.startswith("https://")
+        
         try:
-            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
+            if is_url:
+                self.log(f"🔍 Extrayendo información de URL directa: {query}")
+                data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
+            else:
+                self.log(f"🔍 Buscando en YouTube: {query}")
+                # 1. Búsqueda rápida plana para obtener el primer resultado e información preliminar
+                ytdl_flat = yt_dlp.YoutubeDL({
+                    'extract_flat': True,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True
+                })
+                search_query = query if query.startswith("ytsearch") else f"ytsearch1:{query}"
+                search_data = await loop.run_in_executor(None, lambda: ytdl_flat.extract_info(search_query, download=False))
+                
+                if not search_data or 'entries' not in search_data or not search_data['entries']:
+                    return None
+                    
+                first_entry = search_data['entries'][0]
+                real_url = first_entry.get('url')
+                title = first_entry.get('title', 'Canción Desconocida')
+                self.log(f"📌 Encontrado en YouTube: {title} ({real_url})")
+                
+                # 2. Extraer información del stream real para ese video específico
+                data = await loop.run_in_executor(None, lambda: ytdl.extract_info(real_url, download=False))
+                
             if not data:
                 return None
                 
@@ -259,7 +291,8 @@ class DiscordMusicBot(commands.Bot):
                 'duration': data.get('duration', 0),
                 'webpage_url': data.get('webpage_url', ''),
                 'thumbnail': data.get('thumbnail', ''),
-                'is_local': False
+                'is_local': False,
+                'http_headers': data.get('http_headers', {})
             }
         except Exception as e:
             self.log(f"⚠️ Error en la búsqueda de audio: {str(e)}")
@@ -326,14 +359,31 @@ class DiscordMusicBot(commands.Bot):
             log_dir = get_bot_app_dir()
             ffmpeg_log_path = os.path.join(log_dir, "ffmpeg_error.log")
             
-            # Abrir archivo en modo escritura
-            self.ffmpeg_log_file = open(ffmpeg_log_path, "w", encoding="utf-8", errors="ignore")
+            # Abrir archivo en modo escritura (con line buffering para ver logs en tiempo real)
+            self.ffmpeg_log_file = open(ffmpeg_log_path, "w", encoding="utf-8", errors="ignore", buffering=1)
             self.log(f"📝 Redireccionando salida de error de FFmpeg a: {ffmpeg_log_path}")
+            self.log(f"▶️ Reproduciendo ahora: {self.current_track['title']}")
             
             if self.current_track.get('is_local'):
                 source = discord.FFmpegPCMAudio(self.current_track['url'], executable=ffmpeg_path, stderr=self.ffmpeg_log_file)
             else:
-                source = discord.FFmpegPCMAudio(self.current_track['url'], executable=ffmpeg_path, stderr=self.ffmpeg_log_file, **FFMPEG_OPTIONS)
+                # Extraer headers y construir before_options con el User-Agent correspondiente
+                headers = self.current_track.get('http_headers', {})
+                user_agent = headers.get('User-Agent')
+                
+                before_opts = FFMPEG_OPTIONS.get('before_options', '')
+                if user_agent:
+                    before_opts += f' -user_agent "{user_agent}"'
+                    
+                opts = FFMPEG_OPTIONS.get('options', '')
+                
+                source = discord.FFmpegPCMAudio(
+                    self.current_track['url'],
+                    executable=ffmpeg_path,
+                    stderr=self.ffmpeg_log_file,
+                    before_options=before_opts,
+                    options=opts
+                )
                 
             volume_source = discord.PCMVolumeTransformer(source, volume=self.volume)
             punch_source = PunchDetectingAudioSource(volume_source, self.bridge)
@@ -647,7 +697,19 @@ class DiscordMusicBot(commands.Bot):
                     
         try:
             loop = self.loop or asyncio.get_event_loop()
-            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
+            
+            # Usar una instancia de ytdl rápida con extract_flat=True (solo queremos títulos y URLs)
+            ytdl_flat_opts = {
+                'extract_flat': True,
+                'skip_download': True,
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True
+            }
+            import yt_dlp
+            ytdl_flat = yt_dlp.YoutubeDL(ytdl_flat_opts)
+            
+            data = await loop.run_in_executor(None, lambda: ytdl_flat.extract_info(query, download=False))
             recs = []
             if data and 'entries' in data:
                 for entry in data['entries']:
@@ -659,7 +721,7 @@ class DiscordMusicBot(commands.Bot):
                                 continue
                             recs.append({
                                 'title': title,
-                                'url': entry.get('webpage_url')
+                                'url': entry.get('url') or entry.get('webpage_url')
                             })
             # Actualizar recomendaciones en el bridge (enviamos hasta 24 resultados)
             self.bridge.update_recommendations(recs[:24])
